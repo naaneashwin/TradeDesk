@@ -177,15 +177,43 @@ export default function App() {
 
 // ── Library ───────────────────────────────────────────────────
 function Library({ th, s, strats, trades, onOpen, onUpsert, onDelete }) {
-  const [modal, setModal] = useState(false)
-  const [form, setForm]   = useState({ name:'', desc:'' })
+  const [addModal,  setAddModal]  = useState(false)
+  const [editTarget, setEditTarget] = useState(null)   // strategy being edited
+  const [deleteTarget, setDeleteTarget] = useState(null) // strategy pending delete confirm
+  const [form, setForm] = useState({ name:'', desc:'' })
   const f = k => e => setForm(p => ({ ...p, [k]:e.target.value }))
 
-  const add = () => {
+  const openAdd = () => {
+    setForm({ name:'', desc:'' })
+    setAddModal(true)
+  }
+
+  const openEdit = (st, e) => {
+    e.stopPropagation()
+    setForm({ name:st.name, desc:st.desc ?? '' })
+    setEditTarget(st)
+  }
+
+  const saveAdd = () => {
     if (!form.name.trim()) return
-    const newStrat = { id:uid(), name:form.name, desc:form.desc, active:true, variants:[], totals:{}, sections:[] }
-    onUpsert(newStrat)
-    setForm({ name:'', desc:'' }); setModal(false)
+    onUpsert({ id:uid(), name:form.name, desc:form.desc, active:true, variants:[], totals:{}, sections:[] })
+    setAddModal(false)
+  }
+
+  const saveEdit = () => {
+    if (!form.name.trim()) return
+    onUpsert({ ...editTarget, name:form.name, desc:form.desc })
+    setEditTarget(null)
+  }
+
+  const confirmDelete = (st, e) => {
+    e.stopPropagation()
+    setDeleteTarget(st)
+  }
+
+  const doDelete = () => {
+    onDelete(deleteTarget.id)
+    setDeleteTarget(null)
   }
 
   return (
@@ -195,7 +223,7 @@ function Library({ th, s, strats, trades, onOpen, onUpsert, onDelete }) {
           <div style={{ fontSize:20, fontWeight:600, color:th.text }}>My Strategies</div>
           <div style={{ fontSize:13, color:th.t2, marginTop:2 }}>{strats.filter(x => x.active).length} active · {strats.length} total</div>
         </div>
-        <button style={s.btn} onClick={() => setModal(true)}>+ Add Strategy</button>
+        <button style={s.btn} onClick={openAdd}>+ Add Strategy</button>
       </div>
 
       {strats.map(st => {
@@ -207,7 +235,9 @@ function Library({ th, s, strats, trades, onOpen, onUpsert, onDelete }) {
               <div style={{ flex:1, minWidth:0 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4, flexWrap:'wrap' }}>
                   <span style={{ fontSize:16, fontWeight:600, color:th.text }}>{st.name}</span>
-                  <Pill col={st.active ? '#04342C' : 'rgba(255,255,255,0.06)'} fc={st.active ? '#9FE1CB' : th.t2}>{st.active ? 'Active' : 'Inactive'}</Pill>
+                  <Pill col={st.active ? '#04342C' : 'rgba(255,255,255,0.06)'} fc={st.active ? '#9FE1CB' : th.t2}>
+                    {st.active ? 'Active' : 'Inactive'}
+                  </Pill>
                   {st.variants?.length > 0 && <span style={{ fontSize:11, color:th.t2 }}>{st.variants.length} variants</span>}
                 </div>
                 {st.desc && <div style={{ fontSize:13, color:th.t2, marginBottom:8 }}>{st.desc}</div>}
@@ -216,30 +246,108 @@ function Library({ th, s, strats, trades, onOpen, onUpsert, onDelete }) {
                   {wr !== null && <span>Win rate: <span style={{ color:wr>=50?'#9FE1CB':'#F7C1C1' }}>{wr}%</span></span>}
                 </div>
               </div>
-              <div style={{ display:'flex', gap:8, flexShrink:0 }} onClick={e => e.stopPropagation()}>
-                <button style={{ ...s.ghost, fontSize:12, padding:'5px 12px' }} onClick={() => onUpsert({ ...st, active:!st.active })}>
+
+              {/* Action buttons */}
+              <div style={{ display:'flex', gap:6, flexShrink:0 }} onClick={e => e.stopPropagation()}>
+                <button
+                  style={{ ...s.ghost, fontSize:12, padding:'5px 10px' }}
+                  onClick={() => onUpsert({ ...st, active:!st.active })}
+                  title={st.active ? 'Deactivate' : 'Activate'}
+                >
                   {st.active ? 'Deactivate' : 'Activate'}
                 </button>
-                <button style={{ ...s.btn, fontSize:12, padding:'6px 14px' }} onClick={() => onOpen(st)}>Open →</button>
+                <button
+                  style={{ ...s.ghost, fontSize:12, padding:'5px 10px' }}
+                  onClick={e => openEdit(st, e)}
+                  title="Edit strategy"
+                >
+                  ✏️ Edit
+                </button>
+                <button
+                  style={{ ...s.ghost, fontSize:12, padding:'5px 10px', borderColor:'#c0392b55', color:'#F7C1C1' }}
+                  onClick={e => confirmDelete(st, e)}
+                  title="Delete strategy"
+                >
+                  🗑 Delete
+                </button>
+                <button
+                  style={{ ...s.btn, fontSize:12, padding:'6px 14px' }}
+                  onClick={() => onOpen(st)}
+                >
+                  Open →
+                </button>
               </div>
             </div>
           </div>
         )
       })}
 
-      {modal && (
-        <Modal title="New Strategy" th={th} onClose={() => setModal(false)}>
-          <label style={s.lbl}>Strategy name</label>
-          <input style={{ ...s.inp, marginBottom:12 }} value={form.name} onChange={f('name')} placeholder="e.g. Moving Average Crossover"/>
-          <label style={s.lbl}>Description (optional)</label>
-          <textarea style={{ ...s.inp, resize:'vertical', height:72, marginBottom:16 }} value={form.desc} onChange={f('desc')} placeholder="Brief description"/>
+      {strats.length === 0 && (
+        <div style={{ textAlign:'center', color:th.t2, padding:'60px 0' }}>No strategies yet.</div>
+      )}
+
+      {/* Add modal */}
+      {addModal && (
+        <Modal title="New Strategy" th={th} onClose={() => setAddModal(false)}>
+          <StrategyForm s={s} th={th} form={form} f={f} />
           <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
-            <button style={s.ghost} onClick={() => setModal(false)}>Cancel</button>
-            <button style={s.btn} onClick={add}>Create Strategy</button>
+            <button style={s.ghost} onClick={() => setAddModal(false)}>Cancel</button>
+            <button style={s.btn} onClick={saveAdd}>Create Strategy</button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Edit modal */}
+      {editTarget && (
+        <Modal title="Edit Strategy" subtitle={`Editing: ${editTarget.name}`} th={th} onClose={() => setEditTarget(null)}>
+          <StrategyForm s={s} th={th} form={form} f={f} />
+          <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+            <button style={s.ghost} onClick={() => setEditTarget(null)}>Cancel</button>
+            <button style={s.btn} onClick={saveEdit}>Save Changes</button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Delete confirm modal */}
+      {deleteTarget && (
+        <Modal title="Delete Strategy" th={th} onClose={() => setDeleteTarget(null)}>
+          <div style={{ fontSize:14, color:th.text, marginBottom:8 }}>
+            Are you sure you want to delete <strong>{deleteTarget.name}</strong>?
+          </div>
+          <div style={{ fontSize:13, color:th.t2, marginBottom:20, lineHeight:1.6 }}>
+            This will permanently delete the strategy and <strong>all trades</strong> associated with it.
+            This cannot be undone.
+          </div>
+          <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+            <button style={s.ghost} onClick={() => setDeleteTarget(null)}>Cancel</button>
+            <button style={{ ...s.btn, background:'#c0392b' }} onClick={doDelete}>Yes, delete permanently</button>
           </div>
         </Modal>
       )}
     </div>
+  )
+}
+
+// Shared form fields used by both Add and Edit modals
+function StrategyForm({ s, th, form, f }) {
+  return (
+    <>
+      <label style={s.lbl}>Strategy name *</label>
+      <input
+        style={{ ...s.inp, marginBottom:12 }}
+        value={form.name}
+        onChange={f('name')}
+        placeholder="e.g. Moving Average Crossover"
+        autoFocus
+      />
+      <label style={s.lbl}>Description (optional)</label>
+      <textarea
+        style={{ ...s.inp, resize:'vertical', height:80, marginBottom:16 }}
+        value={form.desc}
+        onChange={f('desc')}
+        placeholder="What is this strategy about? When do you use it?"
+      />
+    </>
   )
 }
 
