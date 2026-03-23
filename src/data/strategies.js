@@ -3,6 +3,81 @@
 // Add new built-in strategies here as you create them.
 
 export const BUILT_IN_SECTIONS = {
+  hlb: [
+    {
+      id: 'hlb-s0', n: 1, title: 'Moving average alignment',
+      col: 'indigo', ref: false,
+      items: [
+        { id: 'hlb-i0a', v: null, label: 'Trading TF: Price > 10 EMA > 20 EMA > 200 EMA', note: 'Check order top to bottom on your trading timeframe', detail: 'All four must be in this exact order — a full MA stack. Confirms short-term, medium-term, and long-term trend all pointing the same direction.' },
+        { id: 'hlb-i0b', v: null, label: 'Parent TF: Price > 10 EMA > 20 EMA > 200 EMA', note: 'Daily trader checks weekly. 15min trader checks daily.', detail: 'The same full stack must hold on the parent timeframe. One timeframe aligned is not enough — both must confirm the trend.' },
+      ],
+    },
+    {
+      id: 'hlb-s1', n: 2, title: 'Market context & health',
+      col: 'purple', ref: false,
+      items: [
+        { id: 'hlb-i2', v: null, label: 'Relative strength: stock 1-month return higher than Nifty 50 and its sector index', note: 'TradingView: % comparison mode — stock vs Nifty 50 vs sector index', detail: 'Beating both Nifty and the sector index = institutions are accumulating this specific stock, not just the sector ETF.' },
+        { id: 'hlb-i3', v: null, label: 'Market breadth: A/D ratio > 1.5 and Nifty not down > 1% on heavy volume today', note: 'Check: NSE India → Market breadth → Advances & Declines', detail: 'If Nifty is down more than 1% on heavy volume, it is a distribution day. Institutions are selling. Skip all new entries regardless of how clean the setup looks.' },
+        { id: 'hlb-i4', v: null, label: 'Sector in Leading or Improving quadrant (RRG) and sector index above its 20 EMA', note: 'Check RRG: Trendlyne / StockEdge sector rotation', detail: 'Leading = strong and getting stronger. Improving = weak but turning up. Both acceptable. Weakening or Lagging = skip entirely.' },
+      ],
+    },
+    {
+      id: 'hlb-s2', n: 3, title: 'Pattern setup',
+      col: 'teal', ref: false,
+      items: [
+        { id: 'hlb-i5', v: null, label: 'Established trend: stock is in a clear, active uptrend', note: null, detail: 'Look for a clear sequence of higher highs and higher lows on the trading timeframe. The trend must be active — not a sideways range or a downtrend attempting recovery.' },
+        { id: 'hlb-i6', v: null, label: 'Higher low confirmed: stock pulled back and formed a base at a higher price than the previous dip', note: 'The low of this pullback must be above the prior swing low', detail: 'This is the core of the setup. The higher low proves buyers stepped in at a higher price than before — demand is increasing. If the pullback undercuts the prior low, the uptrend structure is broken and the setup is invalid.' },
+        { id: 'hlb-i7', v: null, label: 'Breakout: price actively breaks and closes above the most recent swing high', note: null, detail: 'Price must close above the prior swing high — not just approach it. A mere touch or wick above does not count. The close must be clearly above the level.' },
+      ],
+    },
+    {
+      id: 'hlb-s3', n: 4, title: 'Entry conditions — all must be true',
+      col: 'blue', ref: false,
+      items: [
+        { id: 'hlb-i8', v: null, label: 'The close: full candle body closes completely above the resistance line', note: 'Breakout-close entry OR re-test entry — never mix both', detail: 'A wick above the line does not count. The full body must close above. Alternatively, wait for a re-test of the broken resistance and enter on the bounce.' },
+        { id: 'hlb-i9', v: null, label: 'Candle quality: body ≥ 60% of total range, upper wick not larger than body', note: 'Example: range = ₹10 → body must be ≥ ₹6, upper wick < body', detail: 'Small body with long wicks = sellers fighting back = weak conviction. Upper wick larger than the body means sellers rejected the move at the highs.' },
+        { id: 'hlb-i10', v: null, label: 'Volume: breakout candle volume ≥ 1.5× the 20-bar average', note: 'Example: 20-bar avg = 1,00,000 → breakout bar must show ≥ 1,50,000', detail: 'High volume = real institutional buying. Low volume breakout = almost certainly a trap. No exceptions on this rule.' },
+        { id: 'hlb-i11', v: null, label: 'The open: candle opens at or below the resistance line — not gapped above it', note: 'Valid: open ≤ resistance, close > resistance. Invalid: both above — wait for re-test.', detail: 'If both open and close are completely above the line, the breakout already happened on a prior candle and you are chasing. Wait for a re-test entry instead.' },
+      ],
+    },
+    {
+      id: 'hlb-s4', n: 5, title: 'Stop loss',
+      col: 'coral', ref: false, atrCalc: true,
+      items: [
+        { id: 'hlb-i12', v: null, label: 'SL = entry minus 1.5 × ATR(14), and this distance is ≤ 5% of entry price', note: 'TradingView: add ATR(14) → read value → multiply by 1.5 → subtract from entry. Use calculator below ↓', detail: '1.5× ATR gives a stop wide enough to survive normal noise. If 1.5 × ATR > 5% of entry price, the stock is too volatile for this setup right now — skip.' },
+      ],
+    },
+    {
+      id: 'hlb-s4b', n: 6, title: 'Risk:reward & targets',
+      col: 'amber', ref: false,
+      items: [
+        { id: 'hlb-i13', v: null, label: 'Target 1 — look left for a clear resistance level first', note: 'Clear resistance = prior swing high, round number (₹500, ₹1000), or old consolidation zone.', detail: 'A real price level where sellers previously showed up is always more meaningful than a calculated projection.' },
+        { id: 'hlb-i13b', v: null, label: 'If no clear resistance — use Fib extension (1.618 if strong momentum, 1.0 if average)', note: 'Height = breakout − swing low. 1.0 = breakout + height. 1.618 = breakout + (height × 1.618).', detail: 'Strong momentum → 1.618. Average momentum → 1.0. Decide before entry.' },
+        { id: 'hlb-i14', v: null, label: 'Risk:reward ratio is at least 1:2 against the chosen Target 1', note: '1.5 ATR = ₹18 SL → Target 1 must be at least ₹36 above entry.', detail: 'Distance from entry to Target 1 ÷ distance from entry to SL must be ≥ 2. Below 1:2 = skip, no exceptions.' },
+        { id: 'hlb-i14b', v: null, label: 'Check if resistance sits very close above the 1:2 target and momentum is not strong', note: 'Close resistance + weak momentum → full exit at 1:2. Strong momentum → trail as normal.', detail: 'If close resistance AND average momentum, plan to exit 100% at 1:2.' },
+      ],
+    },
+    {
+      id: 'hlb-s5', n: 7, title: 'Red flags — skip if any apply',
+      col: 'red', ref: false,
+      items: [
+        { id: 'hlb-i15', v: null, label: 'No earnings announcement within the next 5 trading days', note: null, detail: 'One bad earnings number destroys even the cleanest technical setup overnight. Check the earnings calendar before every entry.' },
+        { id: 'hlb-i16', v: null, label: 'Breakout candle is not climactic — not 3–4× larger than recent average candles', note: null, detail: 'A climactic candle means the move is already exhausted. The SL will exceed 5% and R:R will be broken. Skip and wait for the next setup.' },
+      ],
+    },
+    {
+      id: 'hlb-s6', n: 8, title: 'Trade management & exits',
+      col: 'green', ref: true,
+      items: [
+        { id: 'hlb-r1', v: null, label: 'Hold firm: keep original stop loss until Target 1 is hit — do not move to breakeven prematurely', note: null, detail: 'Price frequently pulls back close to entry before continuing higher. Moving SL too early is the most common reason traders get shaken out of valid trades.' },
+        { id: 'hlb-r2', v: null, label: 'False breakout rule: if the very next candle closes back below resistance → exit immediately', note: null, detail: 'The breakout was fake. Sellers absorbed all the buying. Exit immediately — no hoping, no waiting for one more candle.' },
+        { id: 'hlb-r3', v: null, label: 'Taking profits at Target 1 — strong momentum: sell 50% and trail the rest', note: 'Trail stop below the low of each subsequent good green candle', detail: 'A good green candle: closes green, body ≥ 60% of range, closes in upper half, upper wick ≤ body. Trail only under these.' },
+        { id: 'hlb-r4', v: null, label: 'Taking profits at Target 1 — close resistance + weak momentum: sell 100%', note: null, detail: 'There is no point holding into a resistance wall without the momentum to push through it.' },
+        { id: 'hlb-r5', v: null, label: 'Never average down — exit at stop loss and move on', note: null, detail: 'Adding to a losing trade turns a manageable loss into an account-damaging one. No exceptions.' },
+      ],
+    },
+  ],
+
   rb: [
     {
       id: 's1', n: 1, title: 'Market context — MA alignment',

@@ -1,0 +1,104 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@import "tailwindcss";
+
+/* ── Light mode tokens ── */
+:root {
+  --bg:          #f0f2f5;
+  --surface:     #ffffff;
+  --surface-2:   #f8f9fa;
+  --border:      #e5e7eb;
+  --border-2:    #d1d5db;
+  --green:       #2d7a5f;
+  --green-light: #e8f5f0;
+  --green-mid:   #3a8f6f;
+  --green-dark:  #1f5c47;
+  --text:        #111827;
+  --text-2:      #6b7280;
+  --text-3:      #9ca3af;
+  --red:         #dc2626;
+  --red-light:   #fef2f2;
+  --navy:        #1e2a4a;
+}
+
+/* ── Dark mode tokens ── */
+.dark {
+  --bg:          #0f1117;
+  --surface:     #1a1d27;
+  --surface-2:   #222536;
+  --border:      #2e3347;
+  --border-2:    #3a4060;
+  --green:       #3a9e7a;
+  --green-light: rgba(58,158,122,0.12);
+  --green-mid:   #4ab88f;
+  --green-dark:  #2d7a5f;
+  --text:        #e8eaf0;
+  --text-2:      #8b92a8;
+  --text-3:      #555e7a;
+  --red:         #f87171;
+  --red-light:   rgba(248,113,113,0.1);
+  --navy:        #2a3560;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.font-mono { font-family: 'JetBrains Mono', monospace; }
+
+/* Scrollbar */
+::-webkit-scrollbar       { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 10px; }
+
+/* Input */
+.t-inp {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 14px;
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.t-inp:focus {
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(45,122,95,0.15);
+}
+.t-inp::placeholder { color: var(--text-3); }
+
+/* Buttons */
+.btn-green {
+  background: var(--green);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-family: 'Inter', sans-serif;
+}
+.btn-green:hover { background: var(--green-mid); }
+
+.btn-outline {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  font-family: 'Inter', sans-serif;
+}
+.btn-outline:hover { background: var(--surface-2); }
