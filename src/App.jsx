@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, useNavigate, useParams, Navigate, useLocation } from 'react-router-dom'
 import { getStrategies, upsertStrategy, deleteStrategy, getTrades, insertTrade, deleteTrade } from './lib/db'
+import { supabase } from './lib/supabase'
 import { BUILT_IN_SECTIONS } from './data/strategies'
 import Library      from './components/Library'
 import Checklist    from './components/Checklist'
 import Journal      from './components/Journal'
 import StatsView    from './components/StatsView'
 import Calculator   from './components/Calculator'
+import Login        from './components/Login'
 
 function hydrateStrategy(s) {
   return { ...s, sections: BUILT_IN_SECTIONS[s.id] ?? s.sections ?? [] }
@@ -62,6 +64,7 @@ function ChecklistRoute({ strats, trades, onLogTrade }) {
 export default function App() {
   const navigate  = useNavigate()
   const location  = useLocation()
+  const [session,     setSession]     = useState(undefined)  // undefined = loading, null = logged out
   const [strats,      setStrats]      = useState([])
   const [trades,      setTrades]      = useState([])
   const [loading,     setLoading]     = useState(true)
@@ -73,17 +76,27 @@ export default function App() {
 
   const tab = location.pathname.split('/')[2] ?? 'strategies'
 
+  // ── Auth ────────────────────────────────────────────────────
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null))
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session ?? null)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
     localStorage.setItem('td-theme', dark ? 'dark' : 'light')
   }, [dark])
 
   useEffect(() => {
+    if (!session) return
     Promise.all([getStrategies(), getTrades()])
       .then(([sv, tv]) => { setStrats(sv.map(hydrateStrategy)); setTrades(tv) })
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [])
+  }, [session])
 
   const withSync = fn => async (...args) => {
     setSyncStatus('saving')
@@ -185,6 +198,15 @@ export default function App() {
 
   const sideW = collapsed ? 64 : 240
 
+  // ── Auth guards ─────────────────────────────────────────────
+  // session === undefined means Supabase hasn't resolved yet
+  if (session === undefined) return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <span style={{ color: 'var(--text-2)', fontSize: 14 }}>Loading…</span>
+    </div>
+  )
+  if (session === null) return <Login />
+
   if (loading) return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <span style={{ color: 'var(--text-2)', fontSize: 14 }}>Loading…</span>
@@ -269,6 +291,22 @@ export default function App() {
               <span style={{ fontSize: 12, color: 'var(--text-2)', fontWeight: 500, whiteSpace: 'nowrap' }}>Supabase Connected</span>
             </div>
           )}
+          {!collapsed && (
+            <div style={{ fontSize: 11, color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180 }}>
+              {session.user.email}
+            </div>
+          )}
+          <button
+            title={collapsed ? 'Sign out' : undefined}
+            onClick={() => supabase.auth.signOut()}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: collapsed ? '6px 0' : '6px 0', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', fontSize: 13, fontFamily: 'Inter, sans-serif', width: '100%', justifyContent: collapsed ? 'center' : 'flex-start' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+            {!collapsed && <span>Sign out</span>}
+          </button>
           <button title={collapsed ? 'Settings' : undefined} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: collapsed ? '6px 0' : '6px 0', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-2)', fontSize: 13, fontFamily: 'Inter, sans-serif', width: '100%', justifyContent: collapsed ? 'center' : 'flex-start' }}>
             <Icon name="settings" size={16} color="var(--text-3)"/>
             {!collapsed && <span>Settings</span>}

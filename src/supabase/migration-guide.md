@@ -37,25 +37,29 @@ supabase login
 Run this once, inside your `TradeDesk` project root:
 
 ```bash
-supabase init
+supabase init --workdir src/supabase
 ```
 
-This creates a `supabase/` folder:
+This creates a `src/supabase/` folder:
 
 ```
 TradeDesk/
-└── supabase/
-    ├── config.toml       ← local dev config (auto-generated)
-    ├── seed.sql          ← initial data (you create this)
-    └── migrations/       ← all schema migration files live here
+└── src/
+    └── supabase/
+        ├── config.toml       ← local dev config (auto-generated)
+        ├── seed.sql          ← initial data (you create this)
+        └── migrations/       ← all schema migration files live here
 ```
+
+> **Note:** All Supabase CLI commands in this project require `--workdir src/supabase`
+> because the supabase folder lives inside `src/` instead of the project root.
 
 ---
 
 ## 4. Link to your remote Supabase project
 
 ```bash
-supabase link --project-ref bzvxzwghljupgggdrtga
+supabase link --project-ref bzvxzwghljupgggdrtga --workdir src/supabase
 # It will prompt for your DB password.
 # Find/reset it at: Supabase Dashboard → Project Settings → Database
 ```
@@ -65,13 +69,13 @@ supabase link --project-ref bzvxzwghljupgggdrtga
 ## 5. Create your first migration
 
 ```bash
-supabase migration new create_strategies_and_trades
+supabase migration new create_strategies_and_trades --workdir src/supabase
 ```
 
 This creates a timestamped file:
 
 ```
-supabase/migrations/20260321000000_create_strategies_and_trades.sql
+src/supabase/migrations/20260321000000_create_strategies_and_trades.sql
 ```
 
 Open that file and paste your schema SQL:
@@ -148,7 +152,7 @@ on conflict (id) do nothing;
 ## 7. Push migration to remote Supabase
 
 ```bash
-supabase db push
+supabase db push --workdir src/supabase
 ```
 
 This applies all pending migration files to your live Supabase database.
@@ -165,7 +169,7 @@ The easiest way for a personal project — paste `seed.sql` directly into the Su
 Or via CLI:
 
 ```bash
-supabase db execute --file supabase/seed.sql
+supabase db execute --file src/supabase/seed.sql --workdir src/supabase
 ```
 
 ---
@@ -176,14 +180,14 @@ Whenever you need to change the schema (add a column, new table, etc.):
 
 ```bash
 # 1. Create a new migration file
-supabase migration new add_tags_to_trades
+supabase migration new add_tags_to_trades --workdir src/supabase
 
-# 2. Edit the generated file in supabase/migrations/
+# 2. Edit the generated file in src/supabase/migrations/
 #    Example:
 #    alter table trades add column tags text[] default '{}';
 
 # 3. Push to remote
-supabase db push
+supabase db push --workdir src/supabase
 ```
 
 > **Never edit an existing migration file** that has already been pushed.
@@ -194,7 +198,7 @@ supabase db push
 ## 10. Check migration status
 
 ```bash
-supabase migration list
+supabase migration list --workdir src/supabase
 ```
 
 Shows which migrations have been applied to remote and which are pending.
@@ -206,12 +210,12 @@ Shows which migrations have been applied to remote and which are pending.
 | Command | What it does |
 |---|---|
 | `supabase login` | Authenticate with your Supabase account |
-| `supabase init` | Initialise Supabase in the project (run once) |
-| `supabase link --project-ref <ref>` | Link CLI to your remote Supabase project |
-| `supabase migration new <name>` | Create a new migration file |
-| `supabase db push` | Apply all pending migrations to remote DB |
-| `supabase migration list` | See applied vs pending migrations |
-| `supabase db execute --file <file>` | Run any SQL file against remote DB |
+| `supabase init --workdir src/supabase` | Initialise Supabase in the project (run once) |
+| `supabase link --project-ref <ref> --workdir src/supabase` | Link CLI to your remote Supabase project |
+| `supabase migration new <name> --workdir src/supabase` | Create a new migration file |
+| `supabase db push --workdir src/supabase` | Apply all pending migrations to remote DB |
+| `supabase migration list --workdir src/supabase` | See applied vs pending migrations |
+| `supabase db execute --file <file> --workdir src/supabase` | Run any SQL file against remote DB |
 
 ---
 
@@ -229,14 +233,20 @@ Shows which migrations have been applied to remote and which are pending.
 
 ```
 TradeDesk/
-├── supabase/
-│   ├── config.toml
-│   ├── seed.sql
-│   └── migrations/
-│       └── 20260321000000_create_strategies_and_trades.sql
 ├── src/
+│   ├── supabase/
+│   │   ├── config.toml
+│   │   ├── seed.sql
+│   │   ├── migration-guide.md
+│   │   └── migrations/
+│   │       ├── 20260321000000_create_strategies_and_trades.sql
+│   │       ├── 20260329000001_add_user_id_nullable.sql
+│   │       ├── 20260329000002_make_user_id_required.sql
+│   │       └── 20260329000003_rls_per_user_policies.sql
 │   ├── main.jsx
 │   ├── App.jsx
+│   ├── components/
+│   │   └── Login.jsx
 │   ├── data/
 │   │   └── strategies.js
 │   └── lib/
