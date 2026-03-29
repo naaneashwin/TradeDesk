@@ -355,6 +355,85 @@ function PositionSizeCalc({ direction = "long" }) {
   );
 }
 
+// ─── P&L Simulator (at-expiry, shared across option calculators) ──
+function PLSimulator({ pnlFn, qty, breakevens = [] }) {
+  const [spot, setSpot] = useState("");
+  const spotVal   = parseFloat(spot);
+  const spotValid = !isNaN(spotVal) && spotVal > 0;
+  const pnlPerUnit = spotValid ? pnlFn(spotVal) : null;
+  const totalPnl   = spotValid ? pnlPerUnit * qty : null;
+
+  const isProfit = spotValid && totalPnl > 0;
+  const isLoss   = spotValid && totalPnl < 0;
+
+  const statusBg     = isProfit ? "var(--green-light)"  : isLoss ? "rgba(220,38,38,0.07)" : "var(--surface-2)";
+  const statusBorder = isProfit ? "rgba(45,122,95,0.2)" : isLoss ? "rgba(220,38,38,0.2)"  : "var(--border)";
+  const statusColor  = isProfit ? "var(--green)"        : isLoss ? "var(--red)"            : "var(--text-2)";
+  const statusLabel  = isProfit ? "PROFIT ▲"           : isLoss  ? "LOSS ▼"               : "BREAKEVEN";
+
+  return (
+    <div style={CARD}>
+      <p style={SEC_TITLE}>At-Expiry P&L Simulator</p>
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+          Current Underlying Price (₹)
+        </label>
+        <input
+          type="number"
+          className="t-inp font-mono"
+          value={spot}
+          onChange={(e) => setSpot(e.target.value)}
+          placeholder="e.g. 510"
+          style={{ maxWidth: 220 }}
+        />
+        <p style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>
+          P&L if the underlying closes at this price at expiry (intrinsic value only)
+        </p>
+      </div>
+
+      {spotValid && (
+        <>
+          <div style={{ background: statusBg, border: `1px solid ${statusBorder}`, borderRadius: 12, padding: "18px 22px", marginBottom: breakevens.length > 0 ? 14 : 0 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: statusColor, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
+              {statusLabel}
+            </p>
+            <p style={{ fontSize: 40, fontWeight: 800, color: statusColor, margin: "0 0 4px", fontFamily: "JetBrains Mono, monospace", lineHeight: 1 }}>
+              {totalPnl >= 0 ? "+" : "−"}{fmtINR(Math.abs(totalPnl))}
+            </p>
+            <p style={{ fontSize: 12, color: statusColor, opacity: 0.7, margin: 0 }}>
+              {pnlPerUnit >= 0 ? "+" : "−"}{fmtINR(Math.abs(pnlPerUnit))} per unit × {qty.toLocaleString("en-IN")} units
+            </p>
+          </div>
+
+          {breakevens.length > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: breakevens.length > 1 ? "1fr 1fr" : "1fr", gap: 10 }}>
+              {breakevens.map((be, i) => {
+                const dist = spotVal - be;
+                const pct  = (Math.abs(dist) / be) * 100;
+                const dir  = dist > 0 ? "above" : dist < 0 ? "below" : "at";
+                const dc   = Math.abs(dist) < 0.005 ? "var(--text-2)" : dist > 0 ? "var(--green)" : "var(--red)";
+                return (
+                  <div key={i} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px" }}>
+                    <p style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>
+                      {breakevens.length > 1 ? (i === 0 ? "Lower Breakeven" : "Upper Breakeven") : "Breakeven"}
+                    </p>
+                    <p style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: "0 0 3px", fontFamily: "JetBrains Mono, monospace" }}>
+                      {fmtINR(be)}
+                    </p>
+                    <p style={{ fontSize: 11, color: dc, margin: 0 }}>
+                      {Math.abs(dist) < 0.005 ? "At breakeven" : `${fmtINR(Math.abs(dist))} ${dir} (${fmt2(pct)}%)`}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── Call BreakEven ───────────────────────────────────────────────
 function CallBreakEvenCalc() {
   const [form, setForm] = useState({
@@ -497,6 +576,11 @@ function CallBreakEvenCalc() {
               {fmtINR(breakeven)}
             </p>
           </div>
+          <PLSimulator
+            pnlFn={(spot) => Math.max(0, spot - strike) - premium}
+            qty={lots * lotSize}
+            breakevens={[breakeven]}
+          />
         </>
       )}
     </div>
@@ -652,6 +736,11 @@ function PutBreakEvenCalc() {
               grows as the stock falls toward zero
             </p>
           </div>
+          <PLSimulator
+            pnlFn={(spot) => Math.max(0, strike - spot) - premium}
+            qty={lots * lotSize}
+            breakevens={[breakeven]}
+          />
         </>
       )}
     </div>
@@ -886,6 +975,11 @@ function StrangleCalc() {
               col="var(--green)"
             />
           </div>
+          <PLSimulator
+            pnlFn={(spot) => Math.max(0, spot - callStrike) + Math.max(0, putStrike - spot) - netPremium}
+            qty={lots * lotSize}
+            breakevens={[lowerBreakeven, upperBreakeven]}
+          />
         </>
       )}
     </div>
@@ -1097,6 +1191,11 @@ function StraddleCalc() {
               col="var(--green)"
             />
           </div>
+          <PLSimulator
+            pnlFn={(spot) => Math.abs(spot - strike) - netPremium}
+            qty={lots * lotSize}
+            breakevens={[lowerBreakeven, upperBreakeven]}
+          />
         </>
       )}
     </div>
@@ -1299,6 +1398,11 @@ function BullSpreadCalc() {
               {fmtINR(breakeven)} – {fmtINR(upperStrike)}
             </p>
           </div>
+          <PLSimulator
+            pnlFn={(spot) => Math.min(Math.max(0, spot - lowerStrike), spreadWidth) - netDebit}
+            qty={lots * lotSize}
+            breakevens={[breakeven]}
+          />
         </>
       )}
     </div>
@@ -1501,6 +1605,11 @@ function BearSpreadCalc() {
               {fmtINR(lowerStrike)} – {fmtINR(breakeven)}
             </p>
           </div>
+          <PLSimulator
+            pnlFn={(spot) => Math.min(Math.max(0, higherStrike - spot), spreadWidth) - netDebit}
+            qty={lots * lotSize}
+            breakevens={[breakeven]}
+          />
         </>
       )}
     </div>
@@ -1553,6 +1662,11 @@ function ShortCallCalc() {
               Profit zone: stock ≤ {fmtINR(breakeven)} at expiry · Loss grows with every rupee above breakeven
             </p>
           </div>
+          <PLSimulator
+            pnlFn={(spot) => premium - Math.max(0, spot - strike)}
+            qty={lots * lotSize}
+            breakevens={[breakeven]}
+          />
         </>
       )}
     </div>
@@ -1606,6 +1720,11 @@ function ShortPutCalc() {
               Profit zone: stock ≥ {fmtINR(breakeven)} at expiry · Loss grows as stock falls below breakeven
             </p>
           </div>
+          <PLSimulator
+            pnlFn={(spot) => premium - Math.max(0, strike - spot)}
+            qty={lots * lotSize}
+            breakevens={[breakeven]}
+          />
         </>
       )}
     </div>
@@ -1670,6 +1789,11 @@ function ShortStrangleCalc() {
             <StatCard label="Max Profit"           val={fmtINR(totalCredit)} sub={`Price stays between ${fmtINR(putStrike)} – ${fmtINR(callStrike)}`} col="var(--green)" />
             <StatCard label="Max Loss"             val="Unlimited"            sub="Price breaks out beyond either breakeven" col="var(--red)" />
           </div>
+          <PLSimulator
+            pnlFn={(spot) => netCredit - Math.max(0, spot - callStrike) - Math.max(0, putStrike - spot)}
+            qty={lots * lotSize}
+            breakevens={[lowerBreakeven, upperBreakeven]}
+          />
         </>
       )}
     </div>
@@ -1728,6 +1852,11 @@ function ShortStraddleCalc() {
             <StatCard label="Max Profit"           val={fmtINR(totalCredit)} sub="If price pins exactly at strike at expiry" col="var(--green)" />
             <StatCard label="Max Loss"             val="Unlimited"            sub="Any significant move in either direction" col="var(--red)"   />
           </div>
+          <PLSimulator
+            pnlFn={(spot) => netCredit - Math.abs(spot - strike)}
+            qty={lots * lotSize}
+            breakevens={[lowerBreakeven, upperBreakeven]}
+          />
         </>
       )}
     </div>
@@ -1992,6 +2121,9 @@ const CALC_META = {
   position: {
     direction: "selectable",
     outlook: null,
+    whenToUse: "You have a trade in mind and want to know exactly how many shares/units to buy or short without risking too much of your portfolio on a single position.",
+    risk: "Defined — capped at the rupee amount you specify as portfolio heat (e.g. 1% of capital).",
+    reward: "Depends on your target. Position sizing only controls risk; the reward is determined by your exit target.",
     summary:
       "Calculates the optimal number of shares to trade based on your risk tolerance and account size. Keeps each trade loss within a defined % of your portfolio.",
     howItWorks:
@@ -2008,8 +2140,11 @@ const CALC_META = {
   "call-breakeven": {
     direction: "long",
     outlook: "Bullish",
+    whenToUse: "You are very bullish on a stock/index and expect a significant upward move before expiry.",
+    risk: "Limited — max loss is the premium paid (Premium × Lot Size).",
+    reward: "Unlimited — profit potential grows as the price rises above the breakeven.",
     summary:
-      "Finds the price at which a long call position breaks even at expiry. You profit when the stock closes above Strike + Premium.",
+      "Buy 1 CE (Call option). You pay a premium upfront for the right to buy the underlying at the strike price. Profit if the underlying closes above Strike + Premium at expiry. Max loss is limited to the premium paid; max profit is unlimited.",
     howItWorks:
       "Buying a call costs a premium upfront — that premium is your max loss. To break even, the stock must rise enough to cover that cost by expiry.",
     formula: "Breakeven = Strike Price + Premium Paid",
@@ -2023,8 +2158,11 @@ const CALC_META = {
   "put-breakeven": {
     direction: "short",
     outlook: "Bearish",
+    whenToUse: "You are very bearish on a stock/index and expect a significant downward move before expiry.",
+    risk: "Limited — max loss is the premium paid (Premium × Lot Size).",
+    reward: "High — profit grows as price falls sharply below the breakeven (toward zero).",
     summary:
-      "Finds the price at which a long put position breaks even at expiry. You profit when the stock closes below Strike − Premium.",
+      "Buy 1 PE (Put option). You pay a premium upfront for the right to sell the underlying at the strike price. Profit if the underlying closes below Strike − Premium at expiry. Max loss is limited to the premium paid; max profit grows as the stock falls toward zero.",
     howItWorks:
       "Buying a put lets you profit from a falling stock. The premium paid is your max risk. The stock must fall below the breakeven price for you to net a profit.",
     formula: "Breakeven = Strike Price − Premium Paid",
@@ -2038,8 +2176,11 @@ const CALC_META = {
   "short-call": {
     direction: "short",
     outlook: "Bearish / Neutral",
+    whenToUse: "You are bearish or neutral on the stock/index and expect the price to stay flat or fall before expiry.",
+    risk: "Unlimited — loss accelerates if the price rises sharply above the breakeven.",
+    reward: "Limited — capped at the premium received (Premium × Lot Size).",
     summary:
-      "Sell a call option and collect the premium upfront. Max profit is capped at the premium received. Max loss is unlimited if the stock rallies above the breakeven.",
+      "Sell 1 CE (Call option) and collect the premium upfront. Profit as long as the underlying stays at or below the strike at expiry. Max profit is capped at the premium received; max loss is unlimited if the stock rallies above the breakeven.",
     howItWorks:
       "As the seller, you keep the premium as long as the stock closes at or below the strike at expiry. Every rupee the stock rises above the breakeven erodes your profit and eventually turns into a loss.",
     formula: "Breakeven = Strike Price + Premium Received\nMax Profit = Premium Received × Qty\nMax Loss   = Unlimited",
@@ -2053,8 +2194,11 @@ const CALC_META = {
   "short-put": {
     direction: "long",
     outlook: "Bullish / Neutral",
+    whenToUse: "You are bullish or neutral on the stock/index and expect the price to stay flat or rise before expiry.",
+    risk: "Unlimited (in practice large) — loss grows if the price falls sharply below the breakeven.",
+    reward: "Limited — capped at the premium received (Premium × Lot Size).",
     summary:
-      "Sell a put option and collect the premium upfront. Max profit is capped at the premium received. Max loss is substantial if the stock collapses toward zero.",
+      "Sell 1 PE (Put option) and collect the premium upfront. Profit as long as the underlying stays at or above the strike at expiry. Max profit is capped at the premium received; max loss grows as the stock falls toward zero.",
     howItWorks:
       "As the seller, you keep the premium as long as the stock closes at or above the strike at expiry. Every rupee the stock falls below the breakeven erodes your profit and eventually turns into a loss.",
     formula: "Breakeven = Strike Price − Premium Received\nMax Profit = Premium Received × Qty\nMax Loss   = Breakeven × Qty (stock to ₹0)",
@@ -2068,8 +2212,11 @@ const CALC_META = {
   strangle: {
     direction: "neutral",
     outlook: "Neutral / High Volatility",
+    whenToUse: "Expectation of very high volatility in the underlying stock/index — you expect a big move but are unsure of direction.",
+    risk: "Limited — capped at the initial net premium paid for both legs.",
+    reward: "Unlimited — profit grows as the price breaks out beyond either breakeven.",
     summary:
-      "Buy an OTM call and OTM put at different strikes. Profits when the underlying makes a large move in either direction before expiry.",
+      "Buy 1 OTM CE + Buy 1 OTM PE at different strikes. Cheaper to enter than a straddle because both legs are out-of-the-money. Profit if the underlying makes a large move in either direction beyond either breakeven at expiry. Max loss is the combined premium paid if the price stays between both strikes.",
     howItWorks:
       "You pay two premiums. The stock must move far enough past either strike to recover the combined premium. Max loss occurs when price stays between both strikes at expiry.",
     formula: "Upper BE = Call Strike + Net Premium\nLower BE = Put Strike − Net Premium",
@@ -2084,8 +2231,11 @@ const CALC_META = {
   straddle: {
     direction: "neutral",
     outlook: "Neutral / High Volatility",
+    whenToUse: "Expectation of high volatility in the underlying stock/index — you expect a meaningful move in either direction before expiry.",
+    risk: "Limited — capped at the net premium paid (Call Premium + Put Premium × Lot Size).",
+    reward: "Unlimited — profit grows as the price moves away from the strike in either direction.",
     summary:
-      "Buy an ATM call and ATM put at the same strike. Similar to a strangle but uses one strike — more expensive but profits from any meaningful move in either direction.",
+      "Buy 1 ATM CE + Buy 1 ATM PE at the same strike. Costs more than a strangle because both legs are at-the-money, but requires a smaller move to profit. Profit from any significant move in either direction beyond the net premium. Max loss is the net premium paid if the stock pins exactly at the strike at expiry.",
     howItWorks:
       "Because both legs share the same strike, the net premium is higher than a strangle. Any move exceeding the net premium is profitable. Max loss is when price pins exactly at the strike at expiry.",
     formula: "Upper BE = Strike + Net Premium\nLower BE = Strike − Net Premium",
@@ -2099,8 +2249,11 @@ const CALC_META = {
   "short-strangle": {
     direction: "neutral",
     outlook: "Neutral / Low Volatility",
+    whenToUse: "Expectation of low volatility — you expect the underlying to stay range-bound between both strikes until expiry.",
+    risk: "Unlimited — losses accelerate if the price breaks out sharply beyond either breakeven.",
+    reward: "Limited — capped at the total premium received from selling both legs.",
     summary:
-      "Sell an OTM call and OTM put at different strikes, collecting both premiums. Profits when price stays inside the two breakevens at expiry.",
+      "Sell 1 OTM CE + Sell 1 OTM PE at different strikes, collecting both premiums upfront. Profit if the underlying stays inside the two breakevens at expiry — both options expire worthless and you keep the full credit. Max loss is unlimited if the price breaks out sharply in either direction.",
     howItWorks:
       "As the seller you collect a net credit upfront. As long as the underlying stays between the two strikes, both options expire worthless and you keep the full credit. Any breakout past either breakeven starts eating into profit and then causes losses.",
     formula: "Upper BE = Call Strike + Net Credit\nLower BE = Put Strike − Net Credit\nMax Profit = Net Credit × Qty\nMax Loss   = Unlimited",
@@ -2115,8 +2268,11 @@ const CALC_META = {
   "short-straddle": {
     direction: "neutral",
     outlook: "Neutral / Low Volatility",
+    whenToUse: "Expectation of very low volatility — you expect the underlying to pin close to the strike at expiry with minimal movement.",
+    risk: "Unlimited — any large move in either direction causes accelerating losses.",
+    reward: "Limited — capped at the total net premium received (highest possible credit for any two-leg strategy).",
     summary:
-      "Sell both an ATM call and ATM put at the same strike, collecting both premiums. Profits when the underlying stays close to the strike at expiry — but max loss is unlimited.",
+      "Sell 1 ATM CE + Sell 1 ATM PE at the same strike, collecting the maximum possible premium upfront. Profit if the underlying pins near the strike at expiry. Higher credit than a short strangle, but the safe zone is narrower. Max loss is unlimited from any large move in either direction.",
     howItWorks:
       "You receive the highest possible premium because both options are at-the-money. The entire credit is profit if the stock pins at the strike. Any move in either direction shrinks profit, and exceeding either breakeven results in an accelerating loss.",
     formula: "Upper BE = Strike + Net Credit\nLower BE = Strike − Net Credit\nMax Profit = Net Credit × Qty\nMax Loss   = Unlimited",
@@ -2130,6 +2286,9 @@ const CALC_META = {
   compare: {
     direction: "selectable",
     outlook: null,
+    whenToUse: "You want to decide between a Straddle and Strangle before placing a trade, based on current premiums and your expected move.",
+    risk: "Depends on direction — Long: limited to net premium paid. Short: unlimited.",
+    reward: "Depends on direction — Long: unlimited. Short: limited to net premium received.",
     summary: "Compare a Straddle and Strangle side by side to decide which strategy suits the current market premium and expected move.",
     howItWorks: "",
     formula: "",
@@ -2138,8 +2297,11 @@ const CALC_META = {
   "bull-spread": {
     direction: "long",
     outlook: "Bullish (Defined Risk)",
+    whenToUse: "Your view is mildly bullish — you expect a moderate upward move, not a runaway rally. Cheaper alternative to a plain long call.",
+    risk: "Limited — capped at the net debit paid (Lower Premium − Upper Premium × Lot Size).",
+    reward: "Limited — max profit = (Spread Width − Net Debit) × Lot Size, achieved when price closes ≥ upper strike at expiry.",
     summary:
-      "Buy a lower-strike call and sell a higher-strike call. A defined-risk bullish bet — the short call caps your upside but significantly reduces the entry cost.",
+      "Buy 1 ATM CE & Sell 1 OTM CE at a higher strike. The premium collected from the short call reduces your net entry cost compared to buying a plain call. Profit is capped at the spread width minus the net debit paid. Both max profit and max loss are fully defined upfront.",
     howItWorks:
       "The premium received from selling the upper call offsets the cost of the lower call (net debit). Max profit is locked in once the stock closes at or above the upper strike at expiry.",
     formula:
@@ -2154,8 +2316,11 @@ const CALC_META = {
   "bear-spread": {
     direction: "short",
     outlook: "Bearish (Defined Risk)",
+    whenToUse: "Your view is mildly bearish — you expect a moderate downward move. Cheaper alternative to a plain long put.",
+    risk: "Limited — capped at the net debit paid (Higher Premium − Lower Premium × Lot Size).",
+    reward: "Limited — max profit = (Spread Width − Net Debit) × Lot Size, achieved when price closes ≤ lower strike at expiry.",
     summary:
-      "Buy a higher-strike put and sell a lower-strike put. A defined-risk bearish bet — the short put caps your downside profit but reduces the entry cost.",
+      "Buy 1 ATM PE & Sell 1 OTM PE at a lower strike. The premium collected from the short put reduces your net entry cost compared to buying a plain put. Profit is capped at the spread width minus the net debit paid. Both max profit and max loss are fully defined upfront.",
     howItWorks:
       "The premium received from selling the lower put offsets the cost of the higher put (net debit). Max profit is locked in once the stock closes at or below the lower strike at expiry.",
     formula:
@@ -2247,6 +2412,30 @@ function InfoPanel({ calcId, direction, onDirectionChange }) {
           {meta.formula}
         </pre>
       </div>
+
+      {/* When to use / Risk / Reward */}
+      {(meta.whenToUse || meta.risk || meta.reward) && (
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
+          {meta.whenToUse && (
+            <>
+              <p style={{ fontSize: 10, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>When to Use</p>
+              <p style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.65, margin: "0 0 16px" }}>{meta.whenToUse}</p>
+            </>
+          )}
+          {meta.risk && (
+            <>
+              <p style={{ fontSize: 10, fontWeight: 700, color: "var(--red)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Risk</p>
+              <p style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.65, margin: "0 0 16px" }}>{meta.risk}</p>
+            </>
+          )}
+          {meta.reward && (
+            <>
+              <p style={{ fontSize: 10, fontWeight: 700, color: "var(--green)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Reward</p>
+              <p style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.65, margin: 0 }}>{meta.reward}</p>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Field glossary */}
       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
