@@ -4,24 +4,24 @@ import { getStrategies, upsertStrategy, deleteStrategy, getTrades, insertTrade, 
 import { BUILT_IN_SECTIONS } from './data/strategies'
 import Library      from './components/Library'
 import Checklist    from './components/Checklist'
-import PositionSize from './components/PositionSize'
 import Journal      from './components/Journal'
 import StatsView    from './components/StatsView'
+import Calculator   from './components/Calculator'
 
 function hydrateStrategy(s) {
   return { ...s, sections: BUILT_IN_SECTIONS[s.id] ?? s.sections ?? [] }
 }
 
 const NAV_ITEMS = [
-  { id: 'strategies', label: 'Strategies', path: '/tradedesk/strategies' },
-  { id: 'journal',    label: 'Journal',    path: '/tradedesk/journal'    },
-  { id: 'stats',      label: 'Stats',      path: '/tradedesk/stats'      },
-  { id: 'position',   label: 'Position',   path: '/tradedesk/position'   },
+  { id: 'strategies',  label: 'Strategies',  path: '/tradedesk/strategies'  },
+  { id: 'journal',     label: 'Journal',     path: '/tradedesk/journal'     },
+  { id: 'stats',       label: 'Stats',       path: '/tradedesk/stats'       },
+  { id: 'calculator',  label: 'Calculator',  path: '/tradedesk/calculator'  },
 ]
 
 const PAGE_TITLES = {
   strategies: 'My Strategies', journal: 'Trading Journal',
-  stats: 'Statistics', position: 'Position Size',
+  stats: 'Statistics', calculator: 'Calculator',
 }
 
 const REQUIRED_COLS = ['Date','Strategy','Variant','Score','Instrument','Direction','Entry','Exit','Qty','Outcome','PnL','Notes']
@@ -43,6 +43,7 @@ function Icon({ name, size = 18, color = 'currentColor', strokeWidth = 2 }) {
     case 'plus':       return <svg {...s} viewBox="0 0 24 24" {...p}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     case 'check':      return <svg {...s} viewBox="0 0 24 24" {...p}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
     case 'settings':   return <svg {...s} viewBox="0 0 24 24" {...p}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    case 'calculator': return <svg {...s} viewBox="0 0 24 24" {...p}><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="10" y2="10"/><line x1="14" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="10" y2="14"/><line x1="14" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="10" y2="18"/><line x1="14" y1="18" x2="16" y2="18"/></svg>
     case 'logo':       return <svg {...s} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
     case 'search':     return <svg {...s} viewBox="0 0 24 24" {...p}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     case 'chevron-left': return <svg {...s} viewBox="0 0 24 24" {...p}><polyline points="15 18 9 12 15 6"/></svg>
@@ -190,7 +191,7 @@ export default function App() {
     </div>
   )
 
-  const navIconName = { strategies: 'strategies', journal: 'journal', stats: 'stats', position: 'position' }
+  const navIconName = { strategies: 'strategies', journal: 'journal', stats: 'stats', calculator: 'calculator' }
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex' }}>
@@ -345,7 +346,7 @@ export default function App() {
             <Route path="/tradedesk/strategies/:id" element={<ChecklistRoute strats={strats} trades={trades} onLogTrade={handleInsertTrade}/>}/>
             <Route path="/tradedesk/journal"    element={<Journal    trades={trades} strats={strats} onDelete={handleDeleteTrade} onLogTrade={handleInsertTrade}/>}/>
             <Route path="/tradedesk/stats"      element={<StatsView  trades={trades} strats={strats}/>}/>
-            <Route path="/tradedesk/position"   element={<PositionSize/>}/>
+            <Route path="/tradedesk/calculator"  element={<Calculator/>}/>
             <Route path="*" element={<Navigate to="/tradedesk/strategies" replace/>}/>
           </Routes>
         </main>
