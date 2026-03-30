@@ -1,18 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, useNavigate, useParams, Navigate, useLocation } from 'react-router-dom'
-import { getStrategies, upsertStrategy, deleteStrategy, getTrades, insertTrade, deleteTrade } from './lib/db'
+import { getStrategies, upsertStrategy, deleteStrategy, getTrades, insertTrade, deleteTrade,
+         getChecklistItems, upsertChecklistItem, saveStrategyChecklist } from './lib/db'
 import { supabase } from './lib/supabase'
-import { BUILT_IN_SECTIONS } from './data/strategies'
 import Library      from './components/Library'
 import Checklist    from './components/Checklist'
 import Journal      from './components/Journal'
 import StatsView    from './components/StatsView'
 import Calculator   from './components/Calculator'
 import Login        from './components/Login'
-
-function hydrateStrategy(s) {
-  return { ...s, sections: BUILT_IN_SECTIONS[s.id] ?? s.sections ?? [] }
-}
 
 const NAV_ITEMS = [
   { id: 'strategies',  label: 'Strategies',  path: '/tradedesk/strategies'  },
@@ -65,9 +61,10 @@ export default function App() {
   const navigate  = useNavigate()
   const location  = useLocation()
   const [session,     setSession]     = useState(undefined)  // undefined = loading, null = logged out
-  const [strats,      setStrats]      = useState([])
-  const [trades,      setTrades]      = useState([])
-  const [loading,     setLoading]     = useState(true)
+  const [strats,         setStrats]         = useState([])
+  const [trades,         setTrades]         = useState([])
+  const [checklistItems, setChecklistItems] = useState([])
+  const [loading,        setLoading]        = useState(true)
   const [syncStatus,  setSyncStatus]  = useState('idle')
   const [collapsed,   setCollapsed]   = useState(false)
   const [dark,        setDark]        = useState(() => localStorage.getItem('td-theme') === 'dark')
@@ -92,8 +89,8 @@ export default function App() {
 
   useEffect(() => {
     if (!session) return
-    Promise.all([getStrategies(), getTrades()])
-      .then(([sv, tv]) => { setStrats(sv.map(hydrateStrategy)); setTrades(tv) })
+    Promise.all([getStrategies(), getTrades(), getChecklistItems()])
+      .then(([sv, tv, cv]) => { setStrats(sv); setTrades(tv); setChecklistItems(cv) })
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [session])
@@ -105,10 +102,31 @@ export default function App() {
     setTimeout(() => setSyncStatus('idle'), 2000)
   }
 
-  const handleUpsertStrategy = withSync(async st => {
+  // entries (optional): [{ checklistItemId, sectionTitle, sectionCol, isReference, position }]
+  // pass null/undefined to leave existing checklist associations unchanged
+  const handleUpsertStrategy = withSync(async (st, entries) => {
     await upsertStrategy(st)
+    if (entries != null) await saveStrategyChecklist(st.id, entries)
     setStrats(prev => { const i = prev.findIndex(x => x.id === st.id); return i >= 0 ? prev.map(x => x.id === st.id ? st : x) : [...prev, st] })
   })
+
+  const handleUpsertChecklistItem = async (item) => {
+    setSyncStatus('saving')
+    try {
+      const saved = await upsertChecklistItem(item)
+      setChecklistItems(prev => {
+        const i = prev.findIndex(x => x.id === saved.id)
+        return i >= 0 ? prev.map(x => x.id === saved.id ? saved : x) : [...prev, saved]
+      })
+      setSyncStatus('saved')
+      setTimeout(() => setSyncStatus('idle'), 2000)
+      return saved
+    } catch (e) {
+      setSyncStatus('error')
+      setTimeout(() => setSyncStatus('idle'), 2000)
+      throw e
+    }
+  }
   const handleDeleteStrategy = withSync(async id => { await deleteStrategy(id); setStrats(prev => prev.filter(x => x.id !== id)) })
   const handleInsertTrade    = withSync(async trade => { await insertTrade(trade); setTrades(prev => [trade, ...prev]) })
   const handleDeleteTrade    = withSync(async id => { await deleteTrade(id); setTrades(prev => prev.filter(t => t.id !== id)) })
@@ -380,7 +398,7 @@ export default function App() {
         {/* Content */}
         <main style={{ flex: 1, padding: '28px 32px' }}>
           <Routes>
-            <Route path="/tradedesk/strategies" element={<Library strats={strats} trades={trades} onOpen={st => navigate(`/tradedesk/strategies/${st.id}`)} onUpsert={handleUpsertStrategy} onDelete={handleDeleteStrategy}/>}/>
+            <Route path="/tradedesk/strategies" element={<Library strats={strats} trades={trades} onOpen={st => navigate(`/tradedesk/strategies/${st.id}`)} onUpsert={handleUpsertStrategy} onDelete={handleDeleteStrategy} checklistItems={checklistItems} onUpsertChecklistItem={handleUpsertChecklistItem}/>}/>
             <Route path="/tradedesk/strategies/:id" element={<ChecklistRoute strats={strats} trades={trades} onLogTrade={handleInsertTrade}/>}/>
             <Route path="/tradedesk/journal"    element={<Journal    trades={trades} strats={strats} onDelete={handleDeleteTrade} onLogTrade={handleInsertTrade}/>}/>
             <Route path="/tradedesk/stats"      element={<StatsView  trades={trades} strats={strats}/>}/>

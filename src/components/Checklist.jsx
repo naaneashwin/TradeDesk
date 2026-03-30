@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import LogModal from './LogModal'
+import { getStrategyChecklistSections } from '../lib/db'
 
 const COL = {
   purple: ['#1e2a4a','#c7c4f0'], indigo: ['#1e2a4a','#a8a4e8'], blue: ['#1e2a4a','#93c5fd'],
@@ -229,8 +230,21 @@ function BacktestingTab({ trades, strategyId }) {
 }
 
 export default function Checklist({ strategy, trades = [], onLogTrade, onBack }) {
-  const [variant, setVariant]   = useState(strategy.variants?.[0]?.id ?? null)
+  const [variant, setVariant]     = useState(strategy.variants?.[0]?.id ?? null)
   const [activeTab, setActiveTab] = useState('checklist')
+
+  // Sections fetched from DB
+  const [sections,         setSections]         = useState([])
+  const [sectionsLoading,  setSectionsLoading]  = useState(true)
+
+  useEffect(() => {
+    setSectionsLoading(true)
+    setSections([])
+    getStrategyChecklistSections(strategy.id)
+      .then(setSections)
+      .catch(console.error)
+      .finally(() => setSectionsLoading(false))
+  }, [strategy.id])
 
   const st_trades   = trades.filter(t => t.strategyId === strategy.id)
   const trades_count = st_trades.length
@@ -253,11 +267,11 @@ export default function Checklist({ strategy, trades = [], onLogTrade, onBack })
   const toggleExp = id => setExp(e => ({ ...e, [id]: !e[id] }))
   const reset     = ()  => { setChk({}); setEntry(''); setAtr(''); setExp({}) }
 
-  const allIds      = (strategy.sections ?? []).flatMap(sec => sec.items.filter(i => i.detail).map(i => i.id))
+  const allIds      = sections.flatMap(sec => sec.items.filter(i => i.detail).map(i => i.id))
   const allExpanded = allIds.length > 0 && allIds.every(id => exp[id])
   const toggleAll   = () => allExpanded ? setExp({}) : setExp(Object.fromEntries(allIds.map(id => [id, true])))
 
-  const visItems = (strategy.sections ?? []).filter(sec => !sec.ref).flatMap(sec => sec.items.filter(i => !i.v || i.v === variant))
+  const visItems = sections.filter(sec => !sec.ref).flatMap(sec => sec.items.filter(i => !i.v || i.v === variant))
   const done     = visItems.filter(i => chk[i.id]).length
   const total    = strategy.totals?.[variant] ?? visItems.length
   const pct      = total ? Math.round(done / total * 100) : 0
@@ -284,7 +298,7 @@ export default function Checklist({ strategy, trades = [], onLogTrade, onBack })
   // Subtitle from variants
   const subtitle = strategy.variants?.length
     ? strategy.variants.map(v => v.label.replace(/^Type [A-Z] — /, '')).join(' · ')
-    : (strategy.sections ?? []).flatMap(s => s.items ?? []).filter(i => !i.detail).slice(0, 4).map(i => i.label).join(' · ')
+    : sections.flatMap(s => s.items ?? []).filter(i => !i.detail).slice(0, 4).map(i => i.label).join(' · ')
 
   const tabs = [
     { id: 'checklist', label: 'Checklist & Rules' },
@@ -368,7 +382,16 @@ export default function Checklist({ strategy, trades = [], onLogTrade, onBack })
 
       {/* Checklist sections */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
-        {(strategy.sections ?? []).map(sec => {
+        {sectionsLoading && (
+          <p style={{ fontSize: 13, color: 'var(--text-3)', textAlign: 'center', padding: '32px 0' }}>Loading checklist…</p>
+        )}
+        {!sectionsLoading && sections.length === 0 && (
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '32px 24px', textAlign: 'center' }}>
+            <p style={{ fontSize: 14, color: 'var(--text-2)', marginBottom: 8 }}>No checklist items attached yet.</p>
+            <p style={{ fontSize: 13, color: 'var(--text-3)' }}>Go to Strategies → Edit this strategy to attach checklist items from your library.</p>
+          </div>
+        )}
+        {sections.map(sec => {
           const sc  = sec.variantSec ? (COL[vColMap[variant] ?? 'purple'] ?? COL.purple) : (COL[sec.col] ?? COL.gray)
           const vis = sec.items.filter(i => !i.v || i.v === variant)
           if (!vis.length) return null

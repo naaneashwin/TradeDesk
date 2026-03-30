@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { uid } from './ui'
+import { getStrategyChecklistSections } from '../lib/db'
 
 function StrategyIcon({ active }) {
   return (
@@ -60,27 +61,27 @@ function ThreeDotMenu({ onEdit, onDelete, onToggle, active }) {
   )
 }
 
-export default function Library({ strats, trades, onOpen, onUpsert, onDelete }) {
+export default function Library({ strats, trades, onOpen, onUpsert, onDelete, checklistItems = [], onUpsertChecklistItem }) {
   const [addModal,     setAddModal]     = useState(false)
   const [editTarget,   setEditTarget]   = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
-  const [form, setForm] = useState({ name: '', desc: '', rules: [''] })
-  const f = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
 
   useEffect(() => {
-    const handler = () => { setForm({ name: '', desc: '', rules: [''] }); setAddModal(true) }
+    const handler = () => setAddModal(true)
     document.addEventListener('td:new-strategy', handler)
     return () => document.removeEventListener('td:new-strategy', handler)
   }, [])
 
-  const saveAdd = () => {
-    if (!form.name.trim()) return
-    const rules = form.rules.filter(r => r.trim())
-    const sections = rules.length ? [{ id: 'rules', n: 1, title: 'Rules', col: 'gray', items: rules.map((r, i) => ({ id: `r${i}`, label: r })) }] : []
-    onUpsert({ id: uid(), name: form.name, desc: form.desc, active: true, variants: [], totals: {}, sections })
-    setAddModal(false)
+  const handleSaveStrategy = async ({ name, desc }, entries, isEdit) => {
+    if (isEdit) {
+      await onUpsert({ ...editTarget, name, desc }, entries)
+      setEditTarget(null)
+    } else {
+      await onUpsert({ id: uid(), name, desc, active: true, variants: [], totals: {}, sections: [] }, entries)
+      setAddModal(false)
+    }
   }
-  const saveEdit = () => { if (!form.name.trim()) return; onUpsert({ ...editTarget, name: form.name, desc: form.desc }); setEditTarget(null) }
+
   const doDelete = () => { onDelete(deleteTarget.id); setDeleteTarget(null) }
 
   const totalTrades = trades.length
@@ -98,9 +99,8 @@ export default function Library({ strats, trades, onOpen, onUpsert, onDelete }) 
       {/* Strategy cards grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 20 }}>
         {strats.map(st => {
-          const tt  = trades.filter(t => t.strategyId === st.id)
-          const wr  = tt.length ? Math.round(tt.filter(t => t.outcome === 'win').length / tt.length * 100) : 0
-          const rules = (st.sections ?? []).flatMap(s => s.items ?? []).filter(i => !i.detail).slice(0, 5)
+          const tt = trades.filter(t => t.strategyId === st.id)
+          const wr = tt.length ? Math.round(tt.filter(t => t.outcome === 'win').length / tt.length * 100) : 0
 
           return (
             <div key={st.id} style={{
@@ -125,7 +125,7 @@ export default function Library({ strats, trades, onOpen, onUpsert, onDelete }) 
                   <ThreeDotMenu
                     active={st.active}
                     onToggle={() => onUpsert({ ...st, active: !st.active })}
-                    onEdit={() => { setForm({ name: st.name, desc: st.desc ?? '' }); setEditTarget(st) }}
+                    onEdit={() => setEditTarget(st)}
                     onDelete={() => setDeleteTarget(st)}
                   />
                 </div>
@@ -134,16 +134,12 @@ export default function Library({ strats, trades, onOpen, onUpsert, onDelete }) 
               {/* Name */}
               <h3 style={{ fontSize: 18, fontWeight: 700, color: st.active ? 'var(--green)' : 'var(--text)', margin: '0 0 14px' }}>{st.name}</h3>
 
-              {/* Rule tags */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 24, minHeight: 80 }}>
-                {rules.map((item, i) => (
-                  <span key={i} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 8, border: '1px solid var(--border)', color: 'var(--text-2)', background: 'var(--surface-2)' }}>
-                    {item.label}
-                  </span>
-                ))}
-                {rules.length === 0 && st.desc && (
-                  <p style={{ fontSize: 13, color: 'var(--text-2)', margin: 0 }}>{st.desc}</p>
-                )}
+              {/* Description */}
+              <div style={{ minHeight: 80, marginBottom: 24 }}>
+                {st.desc
+                  ? <p style={{ fontSize: 13, color: 'var(--text-2)', margin: 0, lineHeight: 1.5 }}>{st.desc}</p>
+                  : <p style={{ fontSize: 12, color: 'var(--text-3)', margin: 0, fontStyle: 'italic' }}>No description — use Edit to add one.</p>
+                }
               </div>
 
               {/* Stats row */}
@@ -184,9 +180,26 @@ export default function Library({ strats, trades, onOpen, onUpsert, onDelete }) 
         )}
       </div>
 
-      {/* Add modal */}
-      {addModal && <CreateModal form={form} setForm={setForm} f={f} onClose={() => setAddModal(false)} onSave={saveAdd}/>}
-      {editTarget && <FormModal title="Edit Strategy" form={form} f={f} onClose={() => setEditTarget(null)} onSave={saveEdit} saveLabel="Save"/>}
+      {/* Create / Edit modal */}
+      {addModal && (
+        <StrategyModal
+          checklistItems={checklistItems}
+          onNewChecklistItem={onUpsertChecklistItem}
+          onClose={() => setAddModal(false)}
+          onSave={(data, entries) => handleSaveStrategy(data, entries, false)}
+        />
+      )}
+      {editTarget && (
+        <StrategyModal
+          strategy={editTarget}
+          checklistItems={checklistItems}
+          onNewChecklistItem={onUpsertChecklistItem}
+          onClose={() => setEditTarget(null)}
+          onSave={(data, entries) => handleSaveStrategy(data, entries, true)}
+        />
+      )}
+
+      {/* Delete confirm */}
       {deleteTarget && (
         <LightModal title="Delete Strategy" onClose={() => setDeleteTarget(null)}>
           <p style={{ fontSize: 14, color: 'var(--text)', marginBottom: 6 }}>Delete <strong>{deleteTarget.name}</strong>?</p>
@@ -201,49 +214,215 @@ export default function Library({ strats, trades, onOpen, onUpsert, onDelete }) 
   )
 }
 
-function CreateModal({ form, setForm, f, onClose, onSave }) {
-  const setRule = (i, v) => setForm(p => { const r = [...p.rules]; r[i] = v; return { ...p, rules: r } })
-  const addRule = () => setForm(p => ({ ...p, rules: [...p.rules, ''] }))
-  const removeRule = i => setForm(p => ({ ...p, rules: p.rules.filter((_, j) => j !== i) }))
+// ── Strategy Modal (create + edit, Details + Checklist tabs) ────────────────
+
+const SECTION_COLORS = [
+  { id: 'gray',   label: 'Gray'   }, { id: 'indigo', label: 'Indigo' },
+  { id: 'purple', label: 'Purple' }, { id: 'blue',   label: 'Blue'   },
+  { id: 'teal',   label: 'Teal'   }, { id: 'amber',  label: 'Amber'  },
+  { id: 'coral',  label: 'Coral'  }, { id: 'green',  label: 'Green'  },
+]
+
+function StrategyModal({ strategy, checklistItems, onClose, onSave, onNewChecklistItem }) {
+  const isEdit = !!strategy
+  const [tab, setTab] = useState('details')
+
+  const [name, setName] = useState(strategy?.name ?? '')
+  const [desc, setDesc] = useState(strategy?.desc ?? '')
+
+  // selections: [{ checklistItemId, sectionTitle, sectionCol, isReference }]
+  const [selections,        setSelections]        = useState([])
+  const [checklistLoading,  setChecklistLoading]  = useState(isEdit)
+  const [checklistTouched,  setChecklistTouched]  = useState(false)
+
+  const [showNew,       setShowNew]       = useState(false)
+  const [newTitle,      setNewTitle]      = useState('')
+  const [newDesc,       setNewDesc]       = useState('')
+  const [newNote,       setNewNote]       = useState('')
+  const [newSection,    setNewSection]    = useState('Checklist')
+  const [newSectionCol, setNewSectionCol] = useState('gray')
+  const [creating,      setCreating]      = useState(false)
+  const [saving,        setSaving]        = useState(false)
+
+  useEffect(() => {
+    if (!isEdit) return
+    getStrategyChecklistSections(strategy.id)
+      .then(sections => {
+        const entries = []
+        for (const sec of sections)
+          for (const item of sec.items)
+            entries.push({ checklistItemId: item.id, sectionTitle: sec.title, sectionCol: sec.col, isReference: sec.ref })
+        setSelections(entries)
+      })
+      .catch(console.error)
+      .finally(() => setChecklistLoading(false))
+  }, [isEdit, strategy?.id])
+
+  const toggleItem = id =>
+    setSelections(prev =>
+      prev.some(s => s.checklistItemId === id)
+        ? prev.filter(s => s.checklistItemId !== id)
+        : [...prev, { checklistItemId: id, sectionTitle: 'Checklist', sectionCol: 'gray', isReference: false }]
+    )
+
+  const updateSel = (id, patch) =>
+    setSelections(prev => prev.map(s => s.checklistItemId === id ? { ...s, ...patch } : s))
+
+  const handleCreateNew = async () => {
+    if (!newTitle.trim() || creating) return
+    setCreating(true)
+    try {
+      const item = await onNewChecklistItem({ title: newTitle.trim(), description: newDesc.trim() || null, note: newNote.trim() || null })
+      setSelections(prev => [...prev, { checklistItemId: item.id, sectionTitle: newSection.trim() || 'Checklist', sectionCol: newSectionCol, isReference: false }])
+      setShowNew(false)
+      setNewTitle(''); setNewDesc(''); setNewNote(''); setNewSection('Checklist'); setNewSectionCol('gray')
+    } catch (e) { console.error(e) }
+    finally { setCreating(false) }
+  }
+
+  const openChecklist = () => { setTab('checklist'); setChecklistTouched(true) }
+
+  const handleSave = async () => {
+    if (!name.trim()) { setTab('details'); return }
+    setSaving(true)
+    try {
+      const entries = checklistTouched ? selections.map((s, i) => ({ ...s, position: i })) : null
+      await onSave({ name: name.trim(), desc: desc.trim() }, entries)
+    } finally { setSaving(false) }
+  }
+
   return (
-    <LightModal title="Create New Strategy" onClose={onClose} wide>
-      <label style={lbl}>Strategy Name</label>
-      <input className="t-inp" style={{ marginBottom: 20, fontSize: 15, padding: '12px 14px' }} value={form.name} onChange={f('name')} placeholder="e.g. Resistance Breakout" autoFocus/>
-      <label style={lbl}>Description</label>
-      <textarea className="t-inp" style={{ height: 100, resize: 'vertical', marginBottom: 20, fontSize: 15, padding: '12px 14px' }} value={form.desc} onChange={f('desc')} placeholder="Briefly describe the strategy..."/>
-      <label style={lbl}>Initial Rules</label>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
-        {form.rules.map((r, i) => (
-          <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input className="t-inp" style={{ fontSize: 15, padding: '12px 14px' }} value={r} onChange={e => setRule(i, e.target.value)} placeholder={`Rule ${i + 1}`}/>
-            {form.rules.length > 1 && (
-              <button onClick={() => removeRule(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', fontSize: 20, lineHeight: 1, padding: '0 4px', flexShrink: 0 }}>×</button>
-            )}
-          </div>
+    <LightModal title={isEdit ? 'Edit Strategy' : 'New Strategy'} onClose={onClose} wide>
+      {/* Tabs */}
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 24, marginTop: -8 }}>
+        {[['details', 'Strategy Details'], ['checklist', `Checklist${selections.length ? ` (${selections.length})` : ''}`]].map(([id, label]) => (
+          <button key={id} onClick={() => id === 'checklist' ? openChecklist() : setTab(id)}
+            style={{ padding: '8px 18px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: tab === id ? 600 : 400, color: tab === id ? 'var(--green)' : 'var(--text-2)', borderBottom: tab === id ? '2px solid var(--green)' : '2px solid transparent', marginBottom: -1, fontFamily: 'Inter, sans-serif' }}>
+            {label}
+          </button>
         ))}
       </div>
-      <button onClick={addRule} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, padding: 0, marginBottom: 28, fontFamily: 'Inter, sans-serif' }}>
-        <span style={{ fontSize: 18, lineHeight: 1 }}>+</span> Add another rule
-      </button>
-      <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-        <button className="btn-outline" style={{ padding: '11px 24px', fontSize: 15 }} onClick={onClose}>Cancel</button>
-        <button className="btn-green" style={{ padding: '11px 28px', fontSize: 15 }} onClick={onSave}>Create Strategy</button>
-      </div>
-    </LightModal>
-  )
-}
 
-function FormModal({ title, form, f, onClose, onSave, saveLabel }) {
-  return (
-    <LightModal title={title} onClose={onClose}>
-      <label style={lbl}>Strategy name *</label>
-      <input className="t-inp" style={{ marginBottom: 16 }} value={form.name} onChange={f('name')} placeholder="e.g. Resistance Breakout" autoFocus/>
-      <label style={lbl}>Description (optional)</label>
-      <textarea className="t-inp" style={{ height: 80, resize: 'vertical', marginBottom: 20 }} value={form.desc} onChange={f('desc')} placeholder="When do you use this strategy?"/>
-      <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-        <button className="btn-outline" style={{ padding: '8px 18px' }} onClick={onClose}>Cancel</button>
-        <button className="btn-green" style={{ padding: '8px 20px' }} onClick={onSave}>{saveLabel}</button>
-      </div>
+      {/* ── Details tab ── */}
+      {tab === 'details' && <>
+        <label style={lbl}>Strategy Name *</label>
+        <input className="t-inp" style={{ marginBottom: 20, fontSize: 15, padding: '12px 14px' }}
+          value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Resistance Breakout" autoFocus/>
+        <label style={lbl}>Description (optional)</label>
+        <textarea className="t-inp" style={{ height: 100, resize: 'vertical', marginBottom: 28, fontSize: 15, padding: '12px 14px' }}
+          value={desc} onChange={e => setDesc(e.target.value)} placeholder="Briefly describe when you use this strategy…"/>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button className="btn-outline" style={{ padding: '11px 24px', fontSize: 15 }} onClick={onClose}>Cancel</button>
+          <button className="btn-outline" style={{ padding: '11px 22px', fontSize: 15 }} onClick={openChecklist}>Attach Checklist →</button>
+          <button className="btn-green" style={{ padding: '11px 28px', fontSize: 15 }} onClick={handleSave} disabled={!name.trim() || saving}>
+            {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Strategy'}
+          </button>
+        </div>
+      </>}
+
+      {/* ── Checklist tab ── */}
+      {tab === 'checklist' && <>
+        {checklistLoading
+          ? <p style={{ fontSize: 13, color: 'var(--text-3)', textAlign: 'center', padding: '32px 0' }}>Loading…</p>
+          : <>
+            <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 14 }}>
+              Select checks from your library. Each check can be assigned to a named section.
+            </p>
+
+            {/* Library list */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 340, overflowY: 'auto', marginBottom: 16, paddingRight: 4 }}>
+              {checklistItems.length === 0 && !showNew && (
+                <p style={{ fontSize: 13, color: 'var(--text-3)', textAlign: 'center', padding: '20px 0' }}>
+                  Your checklist library is empty — create your first item below.
+                </p>
+              )}
+              {checklistItems.map(item => {
+                const sel = selections.find(s => s.checklistItemId === item.id)
+                const on  = !!sel
+                return (
+                  <div key={item.id} style={{ borderRadius: 10, border: `1px solid ${on ? 'var(--green)' : 'var(--border)'}`, background: on ? 'rgba(45,122,95,0.04)' : 'var(--surface-2)', overflow: 'hidden', transition: 'border-color 0.15s' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 14px', cursor: 'pointer' }} onClick={() => toggleItem(item.id)}>
+                      <div style={{ width: 20, height: 20, borderRadius: 4, flexShrink: 0, marginTop: 1, border: `2px solid ${on ? 'var(--green)' : '#d1d5db'}`, background: on ? 'var(--green)' : 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {on && <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="2 6 5 9 10 3"/></svg>}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', margin: '0 0 2px' }}>
+                          {item.title || <em style={{ color: 'var(--text-3)', fontStyle: 'italic', fontWeight: 400 }}>Untitled item</em>}
+                        </p>
+                        {item.description && <p style={{ fontSize: 12, color: 'var(--text-2)', margin: 0 }}>{item.description}</p>}
+                      </div>
+                    </div>
+                    {on && (
+                      <div style={{ display: 'flex', gap: 8, padding: '0 14px 12px', flexWrap: 'wrap', alignItems: 'flex-end' }} onClick={e => e.stopPropagation()}>
+                        <div style={{ flex: 1, minWidth: 140 }}>
+                          <label style={{ ...lbl, marginBottom: 4 }}>Section name</label>
+                          <input className="t-inp" style={{ padding: '6px 10px', fontSize: 12 }} placeholder="e.g. Entry Conditions"
+                            value={sel.sectionTitle} onChange={e => updateSel(item.id, { sectionTitle: e.target.value })}/>
+                        </div>
+                        <div>
+                          <label style={{ ...lbl, marginBottom: 4 }}>Color</label>
+                          <select className="t-inp" style={{ padding: '6px 10px', fontSize: 12 }}
+                            value={sel.sectionCol} onChange={e => updateSel(item.id, { sectionCol: e.target.value })}>
+                            {SECTION_COLORS.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                          </select>
+                        </div>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', paddingBottom: 4, fontSize: 12, color: 'var(--text-2)', userSelect: 'none' }}>
+                          <input type="checkbox" checked={sel.isReference} onChange={e => updateSel(item.id, { isReference: e.target.checked })}/>
+                          Reference only
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Create new item inline */}
+            {!showNew ? (
+              <button onClick={() => setShowNew(true)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, padding: 0, marginBottom: 20, fontFamily: 'Inter, sans-serif' }}>
+                <span style={{ fontSize: 18, lineHeight: 1 }}>+</span> Create new checklist item
+              </button>
+            ) : (
+              <div style={{ background: 'var(--surface-2)', borderRadius: 12, padding: 16, border: '1px solid var(--border)', marginBottom: 20 }}>
+                <p style={{ ...lbl, marginBottom: 12 }}>New Checklist Item</p>
+                <input className="t-inp" style={{ marginBottom: 10 }} placeholder="Title *" value={newTitle} onChange={e => setNewTitle(e.target.value)} autoFocus/>
+                <textarea className="t-inp" style={{ height: 72, resize: 'vertical', marginBottom: 10 }}
+                  placeholder="Description — shown when the check is expanded" value={newDesc} onChange={e => setNewDesc(e.target.value)}/>
+                <input className="t-inp" style={{ marginBottom: 10 }} placeholder="Note / hint (short tag)" value={newNote} onChange={e => setNewNote(e.target.value)}/>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ ...lbl, marginBottom: 4 }}>Section name</label>
+                    <input className="t-inp" style={{ padding: '6px 10px', fontSize: 12 }} placeholder="e.g. Entry Conditions"
+                      value={newSection} onChange={e => setNewSection(e.target.value)}/>
+                  </div>
+                  <div>
+                    <label style={{ ...lbl, marginBottom: 4 }}>Color</label>
+                    <select className="t-inp" style={{ padding: '6px 10px', fontSize: 12 }}
+                      value={newSectionCol} onChange={e => setNewSectionCol(e.target.value)}>
+                      {SECTION_COLORS.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn-outline" style={{ padding: '7px 14px', fontSize: 13 }}
+                    onClick={() => { setShowNew(false); setNewTitle(''); setNewDesc(''); setNewNote(''); setNewSection('Checklist'); setNewSectionCol('gray') }}>Cancel</button>
+                  <button className="btn-green" style={{ padding: '7px 14px', fontSize: 13 }}
+                    onClick={handleCreateNew} disabled={creating || !newTitle.trim()}>
+                    {creating ? 'Creating…' : 'Create & Attach'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </>}
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: 20 }}>
+          <button className="btn-outline" style={{ padding: '11px 22px', fontSize: 15 }} onClick={() => setTab('details')}>← Details</button>
+          <button className="btn-green" style={{ padding: '11px 28px', fontSize: 15 }} onClick={handleSave} disabled={!name.trim() || saving}>
+            {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Strategy'}
+          </button>
+        </div>
+      </>}
     </LightModal>
   )
 }
