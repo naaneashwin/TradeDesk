@@ -1,4 +1,14 @@
 import { useState } from "react";
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ReferenceLine,
+  ResponsiveContainer,
+} from "recharts";
 
 const fmtINR = (n) =>
   "₹" +
@@ -361,7 +371,217 @@ function PositionSizeCalc({ direction = "long" }) {
   );
 }
 
-// ─── P&L Simulator (at-expiry, shared across option calculators) ──
+// ─── Payoff Chart ────────────────────────────────────────────────
+function PayoffChart({ pnlFn, center, breakevens = [], title }) {
+  const range = center * 0.35;
+  const lo = Math.max(1, center - range);
+  const hi = center + range;
+  const steps = 120;
+  const step = (hi - lo) / steps;
+
+  const data = Array.from({ length: steps + 1 }, (_, i) => {
+    const spot = lo + i * step;
+    const pnl = pnlFn(spot);
+    return {
+      spot: Math.round(spot),
+      profit: pnl >= 0 ? pnl : 0,
+      loss: pnl < 0 ? pnl : 0,
+      pnl,
+    };
+  });
+
+  const allPnl = data.map((d) => d.pnl);
+  const maxPnl = Math.max(...allPnl);
+  const minPnl = Math.min(...allPnl);
+  const padding = Math.max(Math.abs(maxPnl), Math.abs(minPnl)) * 0.15;
+
+  return (
+    <div style={{ ...CARD, marginTop: 0 }}>
+      <p style={{ ...SEC_TITLE, marginBottom: 16 }}>
+        {title ?? "Payoff at Expiry"}
+      </p>
+      <ResponsiveContainer width="100%" height={220}>
+        <AreaChart
+          data={data}
+          margin={{ top: 8, right: 8, left: 8, bottom: 0 }}
+        >
+          <defs>
+            <linearGradient id="profitGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="var(--green)" stopOpacity={0.3} />
+              <stop offset="95%" stopColor="var(--green)" stopOpacity={0.05} />
+            </linearGradient>
+            <linearGradient id="lossGrad" x1="0" y1="1" x2="0" y2="0">
+              <stop offset="5%" stopColor="var(--red)" stopOpacity={0.3} />
+              <stop offset="95%" stopColor="var(--red)" stopOpacity={0.05} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="var(--border)"
+            vertical={false}
+          />
+          <XAxis
+            dataKey="spot"
+            tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`}
+            tick={{ fontSize: 11, fill: "var(--text-3)" }}
+            axisLine={false}
+            tickLine={false}
+            interval={Math.floor(steps / 6)}
+          />
+          <YAxis
+            tickFormatter={(v) =>
+              v >= 0 ? `+${v.toFixed(0)}` : `${v.toFixed(0)}`
+            }
+            tick={{ fontSize: 11, fill: "var(--text-3)" }}
+            axisLine={false}
+            tickLine={false}
+            width={48}
+            domain={[minPnl - padding, maxPnl + padding]}
+          />
+          <ReferenceLine y={0} stroke="var(--border-2)" strokeWidth={1.5} />
+          {breakevens.map((be, i) => (
+            <ReferenceLine
+              key={i}
+              x={Math.round(be)}
+              stroke="var(--text-3)"
+              strokeDasharray="4 3"
+              strokeWidth={1}
+              label={{
+                value: `BE`,
+                position: "top",
+                fontSize: 10,
+                fill: "var(--text-3)",
+              }}
+            />
+          ))}
+          <Tooltip
+            content={({ active, payload }) => {
+              if (!active || !payload?.length) return null;
+              const d = payload[0]?.payload;
+              const pnl = d?.pnl ?? 0;
+              return (
+                <div
+                  style={{
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    padding: "8px 12px",
+                    fontSize: 12,
+                  }}
+                >
+                  <p style={{ color: "var(--text-2)", marginBottom: 3 }}>
+                    Spot: ₹{d?.spot?.toLocaleString("en-IN")}
+                  </p>
+                  <p
+                    style={{
+                      color: pnl >= 0 ? "var(--green)" : "var(--red)",
+                      fontWeight: 700,
+                      margin: 0,
+                    }}
+                  >
+                    {pnl >= 0 ? "+" : "−"}₹{Math.abs(pnl).toFixed(2)}
+                  </p>
+                </div>
+              );
+            }}
+          />
+          <Area
+            type="monotone"
+            dataKey="profit"
+            stroke="var(--green)"
+            strokeWidth={2}
+            fill="url(#profitGrad)"
+            dot={false}
+            activeDot={false}
+            isAnimationActive={false}
+          />
+          <Area
+            type="monotone"
+            dataKey="loss"
+            stroke="var(--red)"
+            strokeWidth={2}
+            fill="url(#lossGrad)"
+            dot={false}
+            activeDot={false}
+            isAnimationActive={false}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+      <div
+        style={{
+          display: "flex",
+          gap: 16,
+          marginTop: 10,
+          justifyContent: "center",
+        }}
+      >
+        <span
+          style={{
+            fontSize: 11,
+            color: "var(--text-3)",
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+          }}
+        >
+          <span
+            style={{
+              width: 12,
+              height: 3,
+              background: "var(--green)",
+              borderRadius: 2,
+              display: "inline-block",
+            }}
+          />{" "}
+          Profit zone
+        </span>
+        <span
+          style={{
+            fontSize: 11,
+            color: "var(--text-3)",
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+          }}
+        >
+          <span
+            style={{
+              width: 12,
+              height: 3,
+              background: "var(--red)",
+              borderRadius: 2,
+              display: "inline-block",
+            }}
+          />{" "}
+          Loss zone
+        </span>
+        <span
+          style={{
+            fontSize: 11,
+            color: "var(--text-3)",
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+          }}
+        >
+          <span
+            style={{
+              width: 12,
+              height: 3,
+              background: "var(--text-3)",
+              borderRadius: 2,
+              display: "inline-block",
+              opacity: 0.5,
+            }}
+          />{" "}
+          Breakeven
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ─── P&L Simulator ───────────────────────────────────────────────
 function PLSimulator({
   pnlFn,
   qty,
@@ -830,6 +1050,12 @@ function CallBreakEvenCalc() {
               {fmtINR(breakeven)}
             </p>
           </div>
+          <PayoffChart
+            pnlFn={(spot) => Math.max(0, spot - strike) - premium}
+            center={breakeven}
+            breakevens={[breakeven]}
+            title="Long Call — Payoff at Expiry"
+          />
           <PLSimulator
             pnlFn={(spot) => Math.max(0, spot - strike) - premium}
             qty={lots * lotSize}
@@ -992,6 +1218,12 @@ function PutBreakEvenCalc() {
               grows as the stock falls toward zero
             </p>
           </div>
+          <PayoffChart
+            pnlFn={(spot) => Math.max(0, strike - spot) - premium}
+            center={breakeven}
+            breakevens={[breakeven]}
+            title="Long Put — Payoff at Expiry"
+          />
           <PLSimulator
             pnlFn={(spot) => Math.max(0, strike - spot) - premium}
             qty={lots * lotSize}
@@ -1233,6 +1465,16 @@ function StrangleCalc() {
               col="var(--green)"
             />
           </div>
+          <PayoffChart
+            pnlFn={(spot) =>
+              Math.max(0, spot - callStrike) +
+              Math.max(0, putStrike - spot) -
+              netPremium
+            }
+            center={(callStrike + putStrike) / 2}
+            breakevens={[lowerBreakeven, upperBreakeven]}
+            title="Long Strangle — Payoff at Expiry"
+          />
           <PLSimulator
             pnlFn={(spot) =>
               Math.max(0, spot - callStrike) +
@@ -1458,6 +1700,12 @@ function StraddleCalc() {
               col="var(--green)"
             />
           </div>
+          <PayoffChart
+            pnlFn={(spot) => Math.abs(spot - strike) - netPremium}
+            center={strike}
+            breakevens={[lowerBreakeven, upperBreakeven]}
+            title="Long Straddle — Payoff at Expiry"
+          />
           <PLSimulator
             pnlFn={(spot) => Math.abs(spot - strike) - netPremium}
             qty={lots * lotSize}
@@ -1670,6 +1918,14 @@ function BullSpreadCalc() {
               {fmtINR(breakeven)} – {fmtINR(upperStrike)}
             </p>
           </div>
+          <PayoffChart
+            pnlFn={(spot) =>
+              Math.min(Math.max(0, spot - lowerStrike), spreadWidth) - netDebit
+            }
+            center={(lowerStrike + upperStrike) / 2}
+            breakevens={[breakeven]}
+            title="Bull Call Spread — Payoff at Expiry"
+          />
           <PLSimulator
             pnlFn={(spot) =>
               Math.min(Math.max(0, spot - lowerStrike), spreadWidth) - netDebit
@@ -1887,6 +2143,14 @@ function BearSpreadCalc() {
               {fmtINR(lowerStrike)} – {fmtINR(breakeven)}
             </p>
           </div>
+          <PayoffChart
+            pnlFn={(spot) =>
+              Math.min(Math.max(0, higherStrike - spot), spreadWidth) - netDebit
+            }
+            center={(higherStrike + lowerStrike) / 2}
+            breakevens={[breakeven]}
+            title="Bear Put Spread — Payoff at Expiry"
+          />
           <PLSimulator
             pnlFn={(spot) =>
               Math.min(Math.max(0, higherStrike - spot), spreadWidth) - netDebit
@@ -2052,6 +2316,12 @@ function ShortCallCalc() {
               with every rupee above breakeven
             </p>
           </div>
+          <PayoffChart
+            pnlFn={(spot) => premium - Math.max(0, spot - strike)}
+            center={breakeven}
+            breakevens={[breakeven]}
+            title="Short Call — Payoff at Expiry"
+          />
           <PLSimulator
             pnlFn={(spot) => premium - Math.max(0, spot - strike)}
             qty={lots * lotSize}
@@ -2211,6 +2481,12 @@ function ShortPutCalc() {
               stock falls below breakeven
             </p>
           </div>
+          <PayoffChart
+            pnlFn={(spot) => premium - Math.max(0, strike - spot)}
+            center={breakeven}
+            breakevens={[breakeven]}
+            title="Short Put — Payoff at Expiry"
+          />
           <PLSimulator
             pnlFn={(spot) => premium - Math.max(0, strike - spot)}
             qty={lots * lotSize}
@@ -2453,6 +2729,16 @@ function ShortStrangleCalc() {
               col="var(--red)"
             />
           </div>
+          <PayoffChart
+            pnlFn={(spot) =>
+              netCredit -
+              Math.max(0, spot - callStrike) -
+              Math.max(0, putStrike - spot)
+            }
+            center={(callStrike + putStrike) / 2}
+            breakevens={[lowerBreakeven, upperBreakeven]}
+            title="Short Strangle — Payoff at Expiry"
+          />
           <PLSimulator
             pnlFn={(spot) =>
               netCredit -
@@ -2679,6 +2965,12 @@ function ShortStraddleCalc() {
               col="var(--red)"
             />
           </div>
+          <PayoffChart
+            pnlFn={(spot) => netCredit - Math.abs(spot - strike)}
+            center={strike}
+            breakevens={[lowerBreakeven, upperBreakeven]}
+            title="Short Straddle — Payoff at Expiry"
+          />
           <PLSimulator
             pnlFn={(spot) => netCredit - Math.abs(spot - strike)}
             qty={lots * lotSize}
