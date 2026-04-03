@@ -129,10 +129,35 @@ function PositionSizeCalc({ direction = "long" }) {
   });
   const onChange = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
+  // SL calculator state
+  const [slMethod, setSlMethod] = useState("atr"); // "atr" | "swing"
+  const [slOpen, setSlOpen] = useState(false);
+  const [atrForm, setAtrForm] = useState({ atr: "", mult: "1.5" });
+  const [swingForm, setSwingForm] = useState({ swing: "" });
+  const onAtr = (k, v) => setAtrForm((p) => ({ ...p, [k]: v }));
+  const onSwing = (k, v) => setSwingForm((p) => ({ ...p, [k]: v }));
+
   const isLong = direction === "long";
-  const total = parseFloat(form.total);
+
+  // Derived SL from sub-calculator
+  const entryVal = parseFloat(form.entry);
+  const atrVal   = parseFloat(atrForm.atr);
+  const multVal  = parseFloat(atrForm.mult) || 1.5;
+  const swingVal = parseFloat(swingForm.swing);
+
+  const atrSL   = entryVal > 0 && atrVal > 0
+    ? (isLong ? entryVal - multVal * atrVal : entryVal + multVal * atrVal)
+    : null;
+  const swingSL = swingVal > 0 ? swingVal : null;
+  const calcSL  = slMethod === "atr" ? atrSL : swingSL;
+
+  const applySL = () => {
+    if (calcSL != null) onChange("sl", calcSL.toFixed(2));
+  };
+
+  const total   = parseFloat(form.total);
   const capital = parseFloat(form.capital);
-  const risk = parseFloat(form.risk);
+  const risk    = parseFloat(form.risk);
   const entry = parseFloat(form.entry);
   const sl = parseFloat(form.sl);
 
@@ -196,6 +221,185 @@ function PositionSizeCalc({ direction = "long" }) {
             form={form}
             onChange={onChange}
           />
+          {/* SL inline calculator */}
+          <div style={{ gridColumn: "1 / -1" }}>
+            <div
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                overflow: "hidden",
+              }}
+            >
+              {/* Header toggle */}
+              <button
+                onClick={() => setSlOpen((v) => !v)}
+                style={{
+                  width: "100%", display: "flex", alignItems: "center",
+                  justifyContent: "space-between", padding: "10px 14px",
+                  background: "var(--surface-2)", border: "none", cursor: "pointer",
+                  fontFamily: "Inter, sans-serif",
+                }}
+              >
+                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Stop Loss Calculator
+                </span>
+                <span style={{ fontSize: 11, color: "var(--text-3)" }}>
+                  {slOpen ? "▲ collapse" : "▼ expand"}
+                </span>
+              </button>
+
+              {slOpen && (
+                <div style={{ padding: "14px 16px" }}>
+                  {/* Method tabs */}
+                  <div style={{ display: "flex", gap: 0, marginBottom: 14, border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
+                    {[["atr", "ATR-based"], ["swing", "Swing High/Low"]].map(([id, lbl]) => (
+                      <button
+                        key={id}
+                        onClick={() => setSlMethod(id)}
+                        style={{
+                          flex: 1, padding: "7px 0", border: "none", cursor: "pointer",
+                          fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 600,
+                          background: slMethod === id ? "var(--navy)" : "var(--surface)",
+                          color: slMethod === id ? "#fff" : "var(--text-2)",
+                          transition: "all 0.15s",
+                        }}
+                      >{lbl}</button>
+                    ))}
+                  </div>
+
+                  {slMethod === "atr" ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                        <div>
+                          <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5 }}>
+                            ATR Value (₹)
+                          </label>
+                          <input
+                            type="number"
+                            className="t-inp font-mono"
+                            value={atrForm.atr}
+                            onChange={e => onAtr("atr", e.target.value)}
+                            placeholder="e.g. 12.50"
+                          />
+                          <p style={{ fontSize: 11, color: "var(--text-3)", marginTop: 3 }}>14-period ATR from your chart</p>
+                        </div>
+                        <div>
+                          <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5 }}>
+                            Multiplier
+                          </label>
+                          <input
+                            type="number"
+                            className="t-inp font-mono"
+                            value={atrForm.mult}
+                            onChange={e => onAtr("mult", e.target.value)}
+                            placeholder="1.5"
+                          />
+                          <p style={{ fontSize: 11, color: "var(--text-3)", marginTop: 3 }}>Typical: 1×–3× ATR</p>
+                        </div>
+                      </div>
+                      {atrSL != null && (() => {
+                        const atrPct = entryVal > 0 ? (Math.abs(entryVal - atrSL) / entryVal) * 100 : 0;
+                        const atrOver = atrPct > 5;
+                        return (
+                          <>
+                            <div style={{ background: atrOver ? "rgba(220,38,38,0.06)" : "var(--green-light)", border: `1px solid ${atrOver ? "rgba(220,38,38,0.25)" : "rgba(45,122,95,0.2)"}`, borderRadius: 8, padding: "10px 14px", display: "flex", alignItems: "center", gap: 12 }}>
+                              <div style={{ flex: 1 }}>
+                                <p style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>Calculated SL</p>
+                                <p style={{ fontSize: 18, fontWeight: 700, color: "var(--red)", margin: 0, fontFamily: "JetBrains Mono, monospace" }}>
+                                  ₹{atrSL.toFixed(2)}
+                                </p>
+                                <p style={{ fontSize: 11, color: "var(--text-3)", margin: "2px 0 0" }}>
+                                  {isLong ? `Entry − ${multVal}× ATR` : `Entry + ${multVal}× ATR`} · Risk/share: ₹{(Math.abs(entryVal - atrSL)).toFixed(2)} · {atrPct.toFixed(1)}% from entry
+                                </p>
+                              </div>
+                              <button
+                                onClick={applySL}
+                                style={{
+                                  padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer",
+                                  background: "var(--green)", color: "#fff", fontSize: 12, fontWeight: 700,
+                                  fontFamily: "Inter, sans-serif", flexShrink: 0,
+                                }}
+                              >
+                                Use this SL ↓
+                              </button>
+                            </div>
+                            {atrOver && (
+                              <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 14px", borderRadius: 8, background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.25)" }}>
+                                <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>⚠️</span>
+                                <div>
+                                  <p style={{ fontSize: 13, fontWeight: 700, color: "var(--red)", margin: "0 0 2px" }}>SL is {atrPct.toFixed(1)}% away — do not take this trade</p>
+                                  <p style={{ fontSize: 12, color: "var(--text-2)", margin: 0 }}>A stop loss wider than 5% exposes you to excessive risk. Consider a tighter entry, a smaller ATR multiplier, or skip this setup.</p>
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      <div>
+                        <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5 }}>
+                          {isLong ? "Recent Swing Low (₹)" : "Recent Swing High (₹)"}
+                        </label>
+                        <input
+                          type="number"
+                          className="t-inp font-mono"
+                          value={swingForm.swing}
+                          onChange={e => onSwing("swing", e.target.value)}
+                          placeholder={isLong ? "Place below recent swing low" : "Place above recent swing high"}
+                        />
+                        <p style={{ fontSize: 11, color: "var(--text-3)", marginTop: 3 }}>
+                          {isLong ? "SL will be set exactly at this swing low" : "SL will be set exactly at this swing high"}
+                        </p>
+                      </div>
+                      {swingSL != null && (() => {
+                        const swingPct = entryVal > 0 ? (Math.abs(entryVal - swingSL) / entryVal) * 100 : 0;
+                        const swingOver = swingPct > 5;
+                        return (
+                          <>
+                            <div style={{ background: swingOver ? "rgba(220,38,38,0.06)" : "var(--green-light)", border: `1px solid ${swingOver ? "rgba(220,38,38,0.25)" : "rgba(45,122,95,0.2)"}`, borderRadius: 8, padding: "10px 14px", display: "flex", alignItems: "center", gap: 12 }}>
+                              <div style={{ flex: 1 }}>
+                                <p style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>Calculated SL</p>
+                                <p style={{ fontSize: 18, fontWeight: 700, color: "var(--red)", margin: 0, fontFamily: "JetBrains Mono, monospace" }}>
+                                  ₹{swingSL.toFixed(2)}
+                                </p>
+                                {entryVal > 0 && (
+                                  <p style={{ fontSize: 11, color: "var(--text-3)", margin: "2px 0 0" }}>
+                                    Risk/share: ₹{Math.abs(entryVal - swingSL).toFixed(2)} · {swingPct.toFixed(1)}% from entry
+                                  </p>
+                                )}
+                              </div>
+                              <button
+                                onClick={applySL}
+                                style={{
+                                  padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer",
+                                  background: "var(--green)", color: "#fff", fontSize: 12, fontWeight: 700,
+                                  fontFamily: "Inter, sans-serif", flexShrink: 0,
+                                }}
+                              >
+                                Use this SL ↓
+                              </button>
+                            </div>
+                            {swingOver && (
+                              <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 14px", borderRadius: 8, background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.25)" }}>
+                                <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>⚠️</span>
+                                <div>
+                                  <p style={{ fontSize: 13, fontWeight: 700, color: "var(--red)", margin: "0 0 2px" }}>SL is {swingPct.toFixed(1)}% away — do not take this trade</p>
+                                  <p style={{ fontSize: 12, color: "var(--text-2)", margin: 0 }}>A stop loss wider than 5% exposes you to excessive risk. Look for a tighter swing point, wait for price to move closer to the level, or skip this setup.</p>
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
           <Field
             label="Stop Loss Price (₹)"
             k="sl"

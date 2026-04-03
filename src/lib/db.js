@@ -196,6 +196,7 @@ export async function getStrategyChecklistItemsForEdit(strategyId) {
     name:    sec.name ?? '',
     color:   sec.color ?? 'gray',
     neutral: sec.neutral ?? false,
+    variant: sec.variant ?? null,
     items:   (sec.items ?? [])
       .map(id => ciMap[id])
       .filter(Boolean)
@@ -241,6 +242,7 @@ export async function getStrategyChecklistSections(strategyId) {
       col:     sec.color ?? 'gray',
       neutral: sec.neutral ?? false,
       ref:     sec.neutral ?? false,   // Checklist.jsx reads .ref for no-checkbox logic
+      variant: sec.variant ?? null,    // null = all variants; set = only shown for that variant
       items:   (sec.items ?? [])
         .map(id => ciMap[id])
         .filter(Boolean)

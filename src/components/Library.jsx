@@ -496,7 +496,7 @@ function StrategyModal({ strategy, checklistItems = [], onUpsertChecklistItem, o
   const addSection = () =>
     setSections(prev => [
       ...prev,
-      { id: `s-${Date.now()}`, name: "", color: "gray", neutral: false, items: [] },
+      { id: `s-${Date.now()}`, name: "", color: "gray", neutral: false, variant: null, items: [] },
     ]);
 
   const removeSection = (si) =>
@@ -554,6 +554,7 @@ function StrategyModal({ strategy, checklistItems = [], onUpsertChecklistItem, o
         name:    sec.name || `Section ${i + 1}`,
         color:   sec.color ?? "gray",
         neutral: sec.neutral ?? false,
+        variant: sec.variant ?? null,
         items:   sec.items.map(it => it.id),
       }));
       await onSave({ name: name.trim(), desc: desc.trim() }, sectionsData);
@@ -696,7 +697,7 @@ function StrategyModal({ strategy, checklistItems = [], onUpsertChecklistItem, o
                             style={{ background: "none", border: "none", cursor: "pointer", color: "var(--red)", fontSize: 18, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}
                           >×</button>
                         </div>
-                        {/* Row 2: color swatches + neutral toggle */}
+                        {/* Row 2: color swatches + neutral toggle + variant */}
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                             {ITEM_COLORS.map(c => (
@@ -722,6 +723,25 @@ function StrategyModal({ strategy, checklistItems = [], onUpsertChecklistItem, o
                           >
                             {sec.neutral ? "⚑ Reference" : "✓ Actionable"}
                           </button>
+                          {strategy?.variants?.length > 0 && (
+                            <select
+                              value={sec.variant ?? ""}
+                              onChange={e => updateSection(si, { variant: e.target.value || null })}
+                              style={{
+                                fontSize: 11, fontWeight: 600, fontFamily: "Inter, sans-serif",
+                                padding: "3px 8px", borderRadius: 20, cursor: "pointer",
+                                border: "1px solid var(--border)",
+                                background: sec.variant ? "rgba(79,110,247,0.1)" : "transparent",
+                                color: sec.variant ? "#4f6ef7" : "var(--text-3)",
+                                outline: "none", maxWidth: 130,
+                              }}
+                            >
+                              <option value="">All variants</option>
+                              {strategy.variants.map(v => (
+                                <option key={v.id} value={v.id}>{v.label}</option>
+                              ))}
+                            </select>
+                          )}
                         </div>
                       </div>
 

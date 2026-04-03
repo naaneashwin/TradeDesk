@@ -277,7 +277,9 @@ export default function Checklist({ strategy, trades = [], onLogTrade, onBack })
   const allExpanded = allIds.length > 0 && allIds.every(id => exp[id])
   const toggleAll   = () => allExpanded ? setExp({}) : setExp(Object.fromEntries(allIds.map(id => [id, true])))
 
-  const visItems = sections.filter(sec => !sec.ref).flatMap(sec => sec.items.filter(i => !i.v || i.v === variant))
+  const visItems = sections
+    .filter(sec => !sec.ref && (!sec.variant || sec.variant === variant))
+    .flatMap(sec => sec.items.filter(i => !i.v || i.v === variant))
   const done     = visItems.filter(i => chk[i.id]).length
   const total    = visItems.length
   const pct      = total ? Math.round(done / total * 100) : 0
@@ -398,16 +400,24 @@ export default function Checklist({ strategy, trades = [], onLogTrade, onBack })
           </div>
         )}
         {sections.map(sec => {
+          // Hide sections locked to a different variant
+          if (sec.variant && sec.variant !== variant) return null
           const sc  = sec.variantSec ? (COL[vColMap[variant] ?? 'purple'] ?? COL.purple) : (COL[sec.col] ?? COL.gray)
           const vis = sec.items.filter(i => !i.v || i.v === variant)
           if (!vis.length) return null
           const secDone = vis.filter(i => chk[i.id]).length
+          const variantLabel = sec.variant ? strategy.variants?.find(v => v.id === sec.variant)?.label : null
           return (
             <div key={sec.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
               {/* Section header */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', background: sc[0] }}>
                 <div style={{ width: 26, height: 26, borderRadius: '50%', background: sc[1], color: sc[0], display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{sec.n}</div>
                 <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: sc[1] }}>{sec.title}</span>
+                {variantLabel && (
+                  <span style={{ fontSize: 10, fontWeight: 600, color: '#4f6ef7', background: 'rgba(79,110,247,0.12)', border: '1px solid rgba(79,110,247,0.25)', padding: '2px 8px', borderRadius: 20 }}>
+                    {variantLabel}
+                  </span>
+                )}
                 {!sec.ref && <span style={{ fontSize: 11, color: `${sc[1]}99`, fontFamily: 'JetBrains Mono, monospace' }}>{secDone}/{vis.length}</span>}
                 {sec.ref && <span style={{ fontSize: 11, color: `${sc[1]}80`, border: `1px solid ${sc[1]}40`, padding: '2px 8px', borderRadius: 4 }}>reference</span>}
               </div>
