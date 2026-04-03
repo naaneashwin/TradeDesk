@@ -5,7 +5,7 @@ import { supabase } from './supabase'
 export async function getStrategies() {
   const { data, error } = await supabase
     .from('strategies')
-    .select('*')
+    .select('*, strategy_checklist_items(checklist_item_id)')
     .order('created_at', { ascending: true })
 
   if (error) throw error
@@ -72,26 +72,30 @@ export async function deleteTrade(id) {
 
 function rowToStrategy(row) {
   return {
-    id:       row.id,
-    name:     row.name,
-    desc:     row.description,
-    active:   row.active,
-    variants: row.variants  ?? [],
-    totals:   row.totals    ?? {},
-    sections: row.sections  ?? [],
+    id:               row.id,
+    name:             row.name,
+    desc:             row.description,
+    active:           row.active,
+    variants:         row.variants  ?? [],
+    totals:           row.totals    ?? {},
+    sections:         row.sections  ?? [],
+    userId:           row.user_id,
+    checklistItemIds: (row.strategy_checklist_items ?? []).map(r => r.checklist_item_id),
   }
 }
 
 function strategyToRow(s) {
-  return {
+  // NOTE: `sections` is intentionally excluded — managed exclusively by saveStrategyChecklist
+  const row = {
     id:          s.id,
     name:        s.name,
     description: s.desc,
     active:      s.active,
     variants:    s.variants,
     totals:      s.totals,
-    sections:    s.sections,
   }
+  if (s.userId) row.user_id = s.userId
+  return row
 }
 
 function rowToTrade(row) {
@@ -139,11 +143,11 @@ export async function getChecklistItems() {
     .order('created_at', { ascending: true })
 
   if (error) throw error
-  return data.map(r => ({ id: r.id, title: r.title, description: r.description ?? null, note: r.note ?? null }))
+  return data.map(r => ({ id: r.id, title: r.title, description: r.description ?? null, note: r.note ?? null, color: r.color ?? 'gray' }))
 }
 
 export async function upsertChecklistItem(item) {
-  const payload = { title: item.title, description: item.description ?? null, note: item.note ?? null }
+  const payload = { title: item.title, description: item.description ?? null, note: item.note ?? null, color: item.color ?? 'gray' }
   if (item.id) payload.id = item.id
 
   const { data, error } = await supabase
@@ -153,7 +157,7 @@ export async function upsertChecklistItem(item) {
     .single()
 
   if (error) throw error
-  return { id: data.id, title: data.title, description: data.description ?? null, note: data.note ?? null }
+  return { id: data.id, title: data.title, description: data.description ?? null, note: data.note ?? null, color: data.color ?? 'gray' }
 }
 
 export async function deleteChecklistItem(id) {
@@ -163,50 +167,9 @@ export async function deleteChecklistItem(id) {
 
 // ── Strategy ↔ Checklist Links ───────────────────────────────
 
-// Returns sections array in the same shape Checklist.jsx already expects:
-// [{ id, n, title, col, ref, items: [{ id, label, detail, note, v }] }]
-//
-// Resolution order:
-//   1. strategy_checklist_items (new DB-driven data)
-//   2. strategies.sections JSON column (legacy data saved before the migration)
-export async function getStrategyChecklistSections(strategyId) {
-  const { data, error } = await supabase
-    .from('strategy_checklist_items')
-    .select('*, checklist_items(id, title, description, note)')
-    .eq('strategy_id', strategyId)
-    .order('position', { ascending: true })
-
-  if (error) throw error
-
-  // ── Use new DB data if any rows exist ────────────────────────
-  if (data.length > 0) {
-    const secMap = new Map()
-    for (const row of data) {
-      if (!secMap.has(row.section_title)) {
-        secMap.set(row.section_title, {
-          id:    `sec-${row.section_title}`,
-          n:     secMap.size + 1,
-          title: row.section_title,
-          col:   row.section_col,
-          ref:   row.is_reference,
-          items: [],
-        })
-      }
-      const ci = row.checklist_items
-      if (ci) {
-        secMap.get(row.section_title).items.push({
-          id:     ci.id,
-          label:  ci.title,
-          detail: ci.description ?? null,
-          note:   ci.note ?? null,
-          v:      null,
-        })
-      }
-    }
-    return Array.from(secMap.values())
-  }
-
-  // ── Fall back to legacy sections JSON stored on the strategy row ─
+// Returns sections with expanded item data for the strategy edit modal.
+// sections shape: [{ id, name, color, neutral, items: [{ id, label, detail, note, color }] }]
+export async function getStrategyChecklistItemsForEdit(strategyId) {
   const { data: stData, error: stError } = await supabase
     .from('strategies')
     .select('sections')
@@ -214,29 +177,112 @@ export async function getStrategyChecklistSections(strategyId) {
     .single()
 
   if (stError) throw stError
-  return stData.sections ?? []
+
+  const sections = stData.sections ?? []
+  const allIds = sections.flatMap(s => s.items ?? [])
+  if (!allIds.length) return sections.map(s => ({ ...s, items: [] }))
+
+  const { data: ciData, error: ciError } = await supabase
+    .from('checklist_items')
+    .select('*')
+    .in('id', allIds)
+
+  if (ciError) throw ciError
+
+  const ciMap = Object.fromEntries(ciData.map(r => [r.id, r]))
+
+  return sections.map(sec => ({
+    id:      sec.id,
+    name:    sec.name ?? '',
+    color:   sec.color ?? 'gray',
+    neutral: sec.neutral ?? false,
+    items:   (sec.items ?? [])
+      .map(id => ciMap[id])
+      .filter(Boolean)
+      .map(ci => ({
+        id:     ci.id,
+        label:  ci.title,
+        detail: ci.description ?? null,
+        note:   ci.note ?? null,
+        color:  ci.color ?? 'gray',
+      })),
+  }))
 }
 
-// entries: [{ checklistItemId, position, sectionTitle, sectionCol, isReference }]
-// Passing null/undefined is a no-op (preserves existing associations).
-export async function saveStrategyChecklist(strategyId, entries) {
-  if (entries == null) return
+// Returns sections array for Checklist.jsx.
+// Reads from strategies.sections JSON, expands item UUIDs via checklist_items.
+export async function getStrategyChecklistSections(strategyId) {
+  const { data: stData, error: stError } = await supabase
+    .from('strategies')
+    .select('sections')
+    .eq('id', strategyId)
+    .single()
 
+  if (stError) throw stError
+
+  const sections = stData.sections ?? []
+  const allIds = sections.flatMap(s => s.items ?? [])
+  if (!allIds.length) return []
+
+  const { data: ciData, error: ciError } = await supabase
+    .from('checklist_items')
+    .select('*')
+    .in('id', allIds)
+
+  if (ciError) throw ciError
+
+  const ciMap = Object.fromEntries(ciData.map(r => [r.id, r]))
+
+  return sections
+    .map((sec, i) => ({
+      id:      sec.id ?? `sec-${i}`,
+      n:       i + 1,
+      title:   sec.name || `Section ${i + 1}`,
+      col:     sec.color ?? 'gray',
+      neutral: sec.neutral ?? false,
+      ref:     sec.neutral ?? false,   // Checklist.jsx reads .ref for no-checkbox logic
+      items:   (sec.items ?? [])
+        .map(id => ciMap[id])
+        .filter(Boolean)
+        .map(ci => ({
+          id:     ci.id,
+          label:  ci.title,
+          detail: ci.description ?? null,
+          note:   ci.note ?? null,
+          color:  ci.color ?? 'gray',
+          v:      null,
+        })),
+    }))
+    .filter(sec => sec.items.length > 0)
+}
+
+// sections: [{ id, name, color, neutral, items: [uuid, ...] }]
+// Saves the sections JSON to strategies.sections and syncs the join table
+// (for Used-by badge queries). Passing null/undefined is a no-op.
+export async function saveStrategyChecklist(strategyId, sections) {
+  if (sections == null) return
+
+  // Save structured sections JSON to the strategy row
+  const { error: stError } = await supabase
+    .from('strategies')
+    .update({ sections })
+    .eq('id', strategyId)
+  if (stError) throw stError
+
+  // Sync join table so checklistItemIds / Used-by badge stays accurate
   const { error: delError } = await supabase
     .from('strategy_checklist_items')
     .delete()
     .eq('strategy_id', strategyId)
   if (delError) throw delError
 
-  if (!entries.length) return
+  const allItemIds = sections.flatMap(s => s.items ?? [])
+  if (!allItemIds.length) return
 
-  const rows = entries.map((e, i) => ({
+  const rows = allItemIds.map((itemId, i) => ({
     strategy_id:       strategyId,
-    checklist_item_id: e.checklistItemId,
-    position:          e.position ?? i,
-    section_title:     e.sectionTitle  ?? 'Checklist',
-    section_col:       e.sectionCol    ?? 'gray',
-    is_reference:      e.isReference   ?? false,
+    checklist_item_id: itemId,
+    position:          i,
   }))
 
   const { error } = await supabase.from('strategy_checklist_items').insert(rows)

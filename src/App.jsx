@@ -290,22 +290,28 @@ export default function App() {
       try {
         await fn(...args);
         setSyncStatus("saved");
-      } catch {
+      } catch (e) {
+        console.error("[TradeDesk] sync error:", e);
         setSyncStatus("error");
       }
       setTimeout(() => setSyncStatus("idle"), 2000);
     };
 
-  // entries (optional): [{ checklistItemId, sectionTitle, sectionCol, isReference, position }]
+  // sections (optional): [{ id, name, color, neutral, items: [uuid, ...] }]
   // pass null/undefined to leave existing checklist associations unchanged
-  const handleUpsertStrategy = withSync(async (st, entries) => {
-    await upsertStrategy(st);
-    if (entries != null) await saveStrategyChecklist(st.id, entries);
+  const handleUpsertStrategy = withSync(async (st, sections) => {
+    await upsertStrategy({ ...st, userId: session?.user?.id });
+    if (sections != null) await saveStrategyChecklist(st.id, sections);
     setStrats((prev) => {
+      const existing = prev.find((x) => x.id === st.id);
+      const checklistItemIds = sections != null
+        ? sections.flatMap(s => s.items ?? [])
+        : (existing?.checklistItemIds ?? []);
+      const updated = { ...st, checklistItemIds };
       const i = prev.findIndex((x) => x.id === st.id);
       return i >= 0
-        ? prev.map((x) => (x.id === st.id ? st : x))
-        : [...prev, st];
+        ? prev.map((x) => (x.id === st.id ? updated : x))
+        : [...prev, updated];
     });
   });
 
@@ -1011,6 +1017,7 @@ export default function App() {
               element={
                 <ChecklistLibrary
                   items={checklistItems}
+                  strats={strats}
                   onUpsert={handleUpsertChecklistItem}
                   onDelete={handleDeleteChecklistItem}
                 />

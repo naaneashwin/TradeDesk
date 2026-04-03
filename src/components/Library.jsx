@@ -1,6 +1,17 @@
 import { useState, useEffect } from "react";
 import { uid } from "./ui";
-import { BUILT_IN_SECTIONS } from "../data/strategies";
+import { getStrategyChecklistItemsForEdit } from "../lib/db";
+
+const ITEM_COLORS = [
+  { id: "gray",   hex: "#d1d5db" },
+  { id: "indigo", hex: "#a8a4e8" },
+  { id: "purple", hex: "#c7c4f0" },
+  { id: "blue",   hex: "#93c5fd" },
+  { id: "teal",   hex: "#6ee7d4" },
+  { id: "amber",  hex: "#fcd34d" },
+  { id: "coral",  hex: "#fca5a5" },
+  { id: "green",  hex: "#86efac" },
+];
 
 function StrategyIcon({ active }) {
   return (
@@ -155,25 +166,15 @@ export default function Library({
     return () => document.removeEventListener("td:new-strategy", handler);
   }, []);
 
-  const handleSaveStrategy = async ({ name, desc }, sections, isEdit) => {
+  const handleSaveStrategy = async ({ name, desc }, entries, isEdit) => {
     if (isEdit) {
-      await onUpsert({
-        ...editTarget,
-        name,
-        desc,
-        sections: sections ?? editTarget.sections,
-      });
+      await onUpsert({ ...editTarget, name, desc }, entries);
       setEditTarget(null);
     } else {
-      await onUpsert({
-        id: uid(),
-        name,
-        desc,
-        active: true,
-        variants: [],
-        totals: {},
-        sections: sections ?? [],
-      });
+      await onUpsert(
+        { id: uid(), name, desc, active: true, variants: [], totals: {} },
+        entries ?? []
+      );
       setAddModal(false);
     }
   };
@@ -402,15 +403,17 @@ export default function Library({
         <StrategyModal
           onClose={() => setAddModal(false)}
           checklistItems={checklistItems}
-          onSave={(data, secs) => handleSaveStrategy(data, secs, false)}
+          onUpsertChecklistItem={onUpsertChecklistItem}
+          onSave={(data, sections) => handleSaveStrategy(data, sections, false)}
         />
       )}
       {editTarget && (
         <StrategyModal
           strategy={editTarget}
           checklistItems={checklistItems}
+          onUpsertChecklistItem={onUpsertChecklistItem}
           onClose={() => setEditTarget(null)}
-          onSave={(data, secs) => handleSaveStrategy(data, secs, true)}
+          onSave={(data, sections) => handleSaveStrategy(data, sections, true)}
         />
       )}
 
@@ -458,108 +461,102 @@ export default function Library({
 
 // ── Strategy Modal (create + edit, Details + Checklist tabs) ────────────────
 
-const SECTION_COLORS = [
-  { id: "gray", label: "Gray" },
-  { id: "indigo", label: "Indigo" },
-  { id: "purple", label: "Purple" },
-  { id: "blue", label: "Blue" },
-  { id: "teal", label: "Teal" },
-  { id: "amber", label: "Amber" },
-  { id: "coral", label: "Coral" },
-  { id: "green", label: "Green" },
-];
-
-function StrategyModal({ strategy, checklistItems = [], onClose, onSave }) {
+function StrategyModal({ strategy, checklistItems = [], onUpsertChecklistItem, onClose, onSave }) {
   const isEdit = !!strategy;
   const [tab, setTab] = useState("details");
   const [name, setName] = useState(strategy?.name ?? "");
   const [desc, setDesc] = useState(strategy?.desc ?? "");
   const [saving, setSaving] = useState(false);
-  const [editingIdx, setEditingIdx] = useState(null);
-  const [editBuf, setEditBuf] = useState({ label: "", detail: "", note: "" });
-  const [showAdd, setShowAdd] = useState(false);
-  const [newBuf, setNewBuf] = useState({ label: "", detail: "", note: "" });
 
-  // sections: [{ title, col, ref, items: [{ label }] }]
-  const [sections, setSections] = useState(() => {
-    if (!isEdit)
-      return [{ title: "Checklist", col: "gray", ref: false, items: [] }];
-    const src =
-      (strategy.sections?.length
-        ? strategy.sections
-        : BUILT_IN_SECTIONS[strategy.id]) ?? [];
-    return src.length
-      ? src.map((s) => ({
-          title: s.title ?? "",
-          col: s.col ?? "gray",
-          ref: s.ref ?? false,
-          items: (s.items ?? []).map((i) => ({
-            id: i.id,
-            label: i.label ?? "",
-            note: i.note ?? null,
-            detail: i.detail ?? null,
-          })),
-        }))
-      : [{ title: "Checklist", col: "gray", ref: false, items: [] }];
-  });
+  // sections: [{ id, name, color, neutral, items: [{ id, label, detail, note, color }] }]
+  const [sections, setSections] = useState([]);
+  const [checklistLoading, setChecklistLoading] = useState(isEdit);
+
+  // Which section the picker / create panel targets
+  const [pickerSectionIdx, setPickerSectionIdx] = useState(null);
+  const [pickerSearch, setPickerSearch] = useState("");
+  const [createSectionIdx, setCreateSectionIdx] = useState(null);
+  const [createLabel, setCreateLabel] = useState("");
+  const [createDetail, setCreateDetail] = useState("");
+  const [createNote, setCreateNote] = useState("");
+  const [createColor, setCreateColor] = useState("gray");
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    if (!isEdit) { setChecklistLoading(false); return; }
+    getStrategyChecklistItemsForEdit(strategy.id)
+      .then(setSections)
+      .catch(console.error)
+      .finally(() => setChecklistLoading(false));
+  }, []);
+
+  const totalItems = sections.reduce((a, s) => a + s.items.length, 0);
+  const allSelectedIds = new Set(sections.flatMap(s => s.items.map(i => i.id)));
 
   const addSection = () =>
-    setSections((p) => [
-      ...p,
-      { title: "", col: "gray", ref: false, items: [{ label: "" }] },
+    setSections(prev => [
+      ...prev,
+      { id: `s-${Date.now()}`, name: "", color: "gray", neutral: false, items: [] },
     ]);
+
   const removeSection = (si) =>
-    setSections((p) => p.filter((_, i) => i !== si));
+    setSections(prev => prev.filter((_, i) => i !== si));
+
   const updateSection = (si, patch) =>
-    setSections((p) => p.map((s, i) => (i === si ? { ...s, ...patch } : s)));
-  const addItem = (si) =>
-    setSections((p) =>
-      p.map((s, i) =>
-        i === si ? { ...s, items: [...s.items, { label: "" }] } : s,
-      ),
-    );
-  const removeItem = (si, ii) =>
-    setSections((p) =>
-      p.map((s, i) =>
-        i === si ? { ...s, items: s.items.filter((_, j) => j !== ii) } : s,
-      ),
-    );
-  const updateItem = (si, ii, patch) =>
-    setSections((p) =>
-      p.map((s, i) =>
+    setSections(prev => prev.map((s, i) => i === si ? { ...s, ...patch } : s));
+
+  const pickItem = (ci, si) => {
+    setSections(prev => prev.map((s, i) =>
+      i === si
+        ? { ...s, items: [...s.items, { id: ci.id, label: ci.title, detail: ci.description ?? null, note: ci.note ?? null, color: ci.color ?? "gray" }] }
+        : s
+    ));
+    setPickerSectionIdx(null);
+    setPickerSearch("");
+  };
+
+  const removeItem = (si, itemId) =>
+    setSections(prev => prev.map((s, i) =>
+      i === si ? { ...s, items: s.items.filter(it => it.id !== itemId) } : s
+    ));
+
+  const createAndAdd = async (si) => {
+    if (!createLabel.trim()) return;
+    setCreating(true);
+    try {
+      const saved = await onUpsertChecklistItem({
+        title: createLabel.trim(),
+        description: createDetail.trim() || null,
+        note: createNote.trim() || null,
+        color: createColor,
+      });
+      setSections(prev => prev.map((s, i) =>
         i === si
-          ? {
-              ...s,
-              items: s.items.map((it, j) =>
-                j === ii ? { ...it, ...patch } : it,
-              ),
-            }
-          : s,
-      ),
-    );
+          ? { ...s, items: [...s.items, { id: saved.id, label: saved.title, detail: saved.description ?? null, note: saved.note ?? null, color: saved.color ?? "gray" }] }
+          : s
+      ));
+      setCreateLabel("");
+      setCreateDetail("");
+      setCreateNote("");
+      setCreateColor("gray");
+      setCreateSectionIdx(null);
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const handleSave = async () => {
-    if (!name.trim()) {
-      setTab("details");
-      return;
-    }
+    if (!name.trim()) { setTab("details"); return; }
     setSaving(true);
     try {
-      const builtSections = sections.map((s, si) => ({
-        id: `cs-${si}`,
-        n: si + 1,
-        title: s.title || `Section ${si + 1}`,
-        col: s.col,
-        ref: s.ref,
-        items: s.items.map((it, ii) => ({
-          id: it.id ?? `ci-${si}-${ii}`,
-          v: null,
-          label: it.label ?? "",
-          note: it.note ?? null,
-          detail: it.detail ?? null,
-        })),
+      const sectionsData = sections.map((sec, i) => ({
+        id:      sec.id ?? `s-${i}`,
+        name:    sec.name || `Section ${i + 1}`,
+        color:   sec.color ?? "gray",
+        neutral: sec.neutral ?? false,
+        items:   sec.items.map(it => it.id),
       }));
-      await onSave({ name: name.trim(), desc: desc.trim() }, builtSections);
+      await onSave({ name: name.trim(), desc: desc.trim() }, sectionsData);
     } finally {
       setSaving(false);
     }
@@ -582,10 +579,7 @@ function StrategyModal({ strategy, checklistItems = [], onClose, onSave }) {
       >
         {[
           ["details", "Strategy Details"],
-          [
-            "checklist",
-            `Checklist${sections.reduce((a, s) => a + s.items.length, 0) ? ` (${sections.reduce((a, s) => a + s.items.length, 0)})` : ""}`,
-          ],
+          ["checklist", `Checklist${totalItems ? ` (${totalItems})` : ""}`],
         ].map(([id, label]) => (
           <button
             key={id}
@@ -665,338 +659,188 @@ function StrategyModal({ strategy, checklistItems = [], onClose, onSave }) {
       {/* ── Checklist tab ── */}
       {tab === "checklist" && (
         <>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-              maxHeight: 400,
-              overflowY: "auto",
-              marginBottom: 16,
-              paddingRight: 4,
-            }}
-          >
-            {sections[0]?.items.length === 0 && (
-              <p
-                style={{
-                  fontSize: 13,
-                  color: "var(--text-3)",
-                  textAlign: "center",
-                  padding: "20px 0",
-                }}
-              >
-                No items yet — add one below.
-              </p>
-            )}
-            {(sections[0]?.items ?? []).map((item, ii) => (
-              <div
-                key={ii}
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 10,
-                  padding: "10px 12px",
-                  border: "1px solid var(--border)",
-                  borderRadius: 10,
-                  background: "var(--surface-2)",
-                }}
-              >
-                <div style={{ flex: 1 }}>
-                  {editingIdx === ii ? (
-                    <>
-                      <input
-                        className="t-inp"
-                        style={{ marginBottom: 6, fontSize: 13 }}
-                        value={editBuf.label}
-                        onChange={(e) =>
-                          setEditBuf((p) => ({ ...p, label: e.target.value }))
-                        }
-                        autoFocus
-                      />
-                      <textarea
-                        className="t-inp"
-                        style={{
-                          height: 60,
-                          resize: "vertical",
-                          fontSize: 12,
-                          marginBottom: 6,
-                        }}
-                        placeholder="Description (shown on expand)"
-                        value={editBuf.detail ?? ""}
-                        onChange={(e) =>
-                          setEditBuf((p) => ({ ...p, detail: e.target.value }))
-                        }
-                      />
-                      <input
-                        className="t-inp"
-                        style={{ fontSize: 12 }}
-                        placeholder="Note / hint tag"
-                        value={editBuf.note ?? ""}
-                        onChange={(e) =>
-                          setEditBuf((p) => ({ ...p, note: e.target.value }))
-                        }
-                      />
-                      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                        <button
-                          className="btn-green"
-                          style={{ padding: "5px 14px", fontSize: 12 }}
-                          onClick={() => {
-                            setSections((p) =>
-                              p.map((s, si) =>
-                                si === 0
-                                  ? {
-                                      ...s,
-                                      items: s.items.map((it, i) =>
-                                        i === ii ? { ...it, ...editBuf } : it,
-                                      ),
-                                    }
-                                  : s,
-                              ),
-                            );
-                            setEditingIdx(null);
-                          }}
-                        >
-                          Save
-                        </button>
-                        <button
-                          className="btn-outline"
-                          style={{ padding: "5px 12px", fontSize: 12 }}
-                          onClick={() => setEditingIdx(null)}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <p
-                        style={{
-                          fontSize: 13,
-                          fontWeight: 500,
-                          color: "var(--text)",
-                          margin: "0 0 2px",
-                        }}
-                      >
-                        {item.label || (
-                          <em style={{ color: "var(--text-3)" }}>Untitled</em>
-                        )}
-                      </p>
-                      {item.detail && (
-                        <p
-                          style={{
-                            fontSize: 12,
-                            color: "var(--text-2)",
-                            margin: 0,
-                            lineHeight: 1.4,
-                          }}
-                        >
-                          {item.detail}
-                        </p>
-                      )}
-                      {item.note && (
-                        <span
-                          style={{
-                            display: "inline-block",
-                            marginTop: 4,
-                            padding: "2px 7px",
-                            background: "var(--surface)",
-                            borderRadius: 5,
-                            fontSize: 11,
-                            color: "var(--text-3)",
-                            border: "1px solid var(--border)",
-                          }}
-                        >
-                          {item.note}
-                        </span>
-                      )}
-                    </>
-                  )}
-                </div>
-                {editingIdx !== ii && (
-                  <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                    <button
-                      onClick={() => {
-                        setEditingIdx(ii);
-                        setEditBuf({
-                          label: item.label,
-                          detail: item.detail ?? "",
-                          note: item.note ?? "",
-                        });
-                      }}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        color: "var(--text-3)",
-                        fontSize: 12,
-                        padding: "2px 6px",
-                      }}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() =>
-                        setSections((p) =>
-                          p.map((s, si) =>
-                            si === 0
-                              ? {
-                                  ...s,
-                                  items: s.items.filter((_, i) => i !== ii),
-                                }
-                              : s,
-                          ),
-                        )
-                      }
-                      style={{
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        color: "var(--red)",
-                        fontSize: 16,
-                        lineHeight: 1,
-                        padding: "2px 4px",
-                      }}
-                    >
-                      ×
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* Add from library or new */}
-          {showAdd ? (
-            <div
-              style={{
-                border: "1px solid var(--border)",
-                borderRadius: 10,
-                padding: 14,
-                marginBottom: 16,
-                background: "var(--surface-2)",
-              }}
-            >
-              <input
-                className="t-inp"
-                style={{ marginBottom: 8, fontSize: 13 }}
-                placeholder="Label *"
-                value={newBuf.label}
-                onChange={(e) =>
-                  setNewBuf((p) => ({ ...p, label: e.target.value }))
-                }
-                autoFocus
-              />
-              <textarea
-                className="t-inp"
-                style={{
-                  height: 60,
-                  resize: "vertical",
-                  fontSize: 12,
-                  marginBottom: 8,
-                }}
-                placeholder="Description (shown on expand)"
-                value={newBuf.detail}
-                onChange={(e) =>
-                  setNewBuf((p) => ({ ...p, detail: e.target.value }))
-                }
-              />
-              <input
-                className="t-inp"
-                style={{ fontSize: 12, marginBottom: 10 }}
-                placeholder="Note / hint tag"
-                value={newBuf.note}
-                onChange={(e) =>
-                  setNewBuf((p) => ({ ...p, note: e.target.value }))
-                }
-              />
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  className="btn-green"
-                  style={{ padding: "6px 16px", fontSize: 13 }}
-                  disabled={!newBuf.label.trim()}
-                  onClick={() => {
-                    const item = {
-                      id: `ci-${Date.now()}`,
-                      v: null,
-                      label: newBuf.label.trim(),
-                      note: newBuf.note.trim() || null,
-                      detail: newBuf.detail.trim() || null,
-                    };
-                    setSections((p) => {
-                      if (p.length === 0)
-                        return [
-                          {
-                            title: "Checklist",
-                            col: "gray",
-                            ref: false,
-                            items: [item],
-                          },
-                        ];
-                      return p.map((s, i) =>
-                        i === 0 ? { ...s, items: [...s.items, item] } : s,
-                      );
-                    });
-                    setNewBuf({ label: "", detail: "", note: "" });
-                    setShowAdd(false);
-                  }}
-                >
-                  Add
-                </button>
-                <button
-                  className="btn-outline"
-                  style={{ padding: "6px 12px", fontSize: 13 }}
-                  onClick={() => setShowAdd(false)}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
+          {checklistLoading ? (
+            <p style={{ fontSize: 13, color: "var(--text-3)", textAlign: "center", padding: "32px 0" }}>
+              Loading…
+            </p>
           ) : (
-            <button
-              onClick={() => setShowAdd(true)}
-              style={{
-                background: "none",
-                border: "1px dashed var(--border-2)",
-                borderRadius: 8,
-                cursor: "pointer",
-                color: "var(--green)",
-                fontSize: 13,
-                fontWeight: 600,
-                padding: "9px 0",
-                width: "100%",
-                fontFamily: "Inter, sans-serif",
-                marginBottom: 16,
-              }}
-            >
-              + Add checklist item
-            </button>
-          )}
+            <>
+              {/* Sections list */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
+                {sections.length === 0 && (
+                  <p style={{ fontSize: 13, color: "var(--text-3)", textAlign: "center", padding: "28px 0" }}>
+                    No sections yet — click "+ Add Section" below.
+                  </p>
+                )}
 
-          <div
-            style={{
-              display: "flex",
-              gap: 10,
-              justifyContent: "flex-end",
-              borderTop: "1px solid var(--border)",
-              paddingTop: 20,
-            }}
-          >
-            <button
-              className="btn-outline"
-              style={{ padding: "11px 22px", fontSize: 15 }}
-              onClick={() => setTab("details")}
-            >
-              ← Details
-            </button>
-            <button
-              className="btn-green"
-              style={{ padding: "11px 28px", fontSize: 15 }}
-              onClick={handleSave}
-              disabled={!name.trim() || saving}
-            >
-              {saving ? "Saving…" : isEdit ? "Save Changes" : "Create Strategy"}
-            </button>
-          </div>
+                {sections.map((sec, si) => {
+                  const secHex = ITEM_COLORS.find(c => c.id === sec.color)?.hex ?? "#d1d5db";
+                  const sectionPickerItems = checklistItems.filter(
+                    ci => !allSelectedIds.has(ci.id) && ci.title.toLowerCase().includes(pickerSearch.toLowerCase())
+                  );
+                  return (
+                    <div key={sec.id} style={{ border: "1px solid var(--border)", borderLeft: `3px solid ${secHex}`, borderRadius: 10, overflow: "hidden" }}>
+                      {/* Section header */}
+                      <div style={{ padding: "9px 12px", background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
+                        {/* Row 1: name + remove */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7 }}>
+                          <span style={{ width: 10, height: 10, borderRadius: "50%", background: secHex, flexShrink: 0, display: "inline-block" }} />
+                          <input
+                            value={sec.name}
+                            onChange={e => updateSection(si, { name: e.target.value })}
+                            placeholder="Section name…"
+                            style={{ flex: 1, minWidth: 0, background: "none", border: "none", outline: "none", fontSize: 13, fontWeight: 600, color: "var(--text)", fontFamily: "Inter, sans-serif" }}
+                          />
+                          <button
+                            onClick={() => removeSection(si)}
+                            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--red)", fontSize: 18, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}
+                          >×</button>
+                        </div>
+                        {/* Row 2: color swatches + neutral toggle */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                            {ITEM_COLORS.map(c => (
+                              <button
+                                key={c.id}
+                                title={c.id}
+                                onClick={() => updateSection(si, { color: c.id })}
+                                style={{ width: 16, height: 16, borderRadius: "50%", background: c.hex, border: sec.color === c.id ? "2.5px solid var(--text)" : "2.5px solid transparent", padding: 0, cursor: "pointer", flexShrink: 0 }}
+                              />
+                            ))}
+                          </div>
+                          <div style={{ flex: 1 }} />
+                          <button
+                            onClick={() => updateSection(si, { neutral: !sec.neutral })}
+                            style={{
+                              padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600,
+                              cursor: "pointer", fontFamily: "Inter, sans-serif",
+                              border: "1px solid var(--border)",
+                              background: sec.neutral ? "rgba(156,163,175,0.15)" : "transparent",
+                              color: sec.neutral ? "var(--text-2)" : "var(--text-3)",
+                              flexShrink: 0,
+                            }}
+                          >
+                            {sec.neutral ? "⚑ Reference" : "✓ Actionable"}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Items */}
+                      <div style={{ padding: "8px 12px", display: "flex", flexDirection: "column", gap: 4 }}>
+                        {sec.items.length === 0 && pickerSectionIdx !== si && createSectionIdx !== si && (
+                          <p style={{ fontSize: 12, color: "var(--text-3)", margin: "4px 0 6px" }}>No items — add from library below.</p>
+                        )}
+                        {sec.items.map(item => {
+                          const dotHex = ITEM_COLORS.find(c => c.id === (item.color ?? "gray"))?.hex ?? "#d1d5db";
+                          return (
+                            <div key={item.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "6px 8px", borderRadius: 7, background: "var(--surface)" }}>
+                              <span style={{ marginTop: 5, width: 7, height: 7, borderRadius: "50%", background: dotHex, flexShrink: 0, display: "inline-block" }} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <p style={{ fontSize: 13, fontWeight: 500, color: "var(--text)", margin: 0 }}>{item.label}</p>
+                                {item.detail && <p style={{ fontSize: 12, color: "var(--text-2)", margin: "2px 0 0", lineHeight: 1.4 }}>{item.detail}</p>}
+                                {item.note && (
+                                  <span style={{ display: "inline-block", marginTop: 3, padding: "1px 6px", fontSize: 11, color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 4 }}>{item.note}</span>
+                                )}
+                              </div>
+                              <button
+                                onClick={() => removeItem(si, item.id)}
+                                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--red)", fontSize: 16, lineHeight: 1, padding: 0, flexShrink: 0 }}
+                              >×</button>
+                            </div>
+                          );
+                        })}
+
+                        {/* Inline picker */}
+                        {pickerSectionIdx === si ? (
+                          <div style={{ marginTop: 6 }}>
+                            <input
+                              className="t-inp"
+                              style={{ marginBottom: 6, fontSize: 13 }}
+                              placeholder="Search library…"
+                              value={pickerSearch}
+                              onChange={e => setPickerSearch(e.target.value)}
+                              autoFocus
+                            />
+                            <div style={{ maxHeight: 180, overflowY: "auto", display: "flex", flexDirection: "column", gap: 3, marginBottom: 6 }}>
+                              {sectionPickerItems.length === 0 ? (
+                                <p style={{ fontSize: 12, color: "var(--text-3)", textAlign: "center", padding: "8px 0" }}>
+                                  {checklistItems.length === 0 ? "No library items yet." : pickerSearch ? "No matches." : "All items already added."}
+                                </p>
+                              ) : sectionPickerItems.map(ci => {
+                                const hex = ITEM_COLORS.find(c => c.id === (ci.color ?? "gray"))?.hex ?? "#d1d5db";
+                                return (
+                                  <button
+                                    key={ci.id}
+                                    onClick={() => pickItem(ci, si)}
+                                    style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 10px", borderRadius: 7, border: "1px solid var(--border)", background: "var(--surface)", cursor: "pointer", textAlign: "left", fontFamily: "Inter, sans-serif" }}
+                                  >
+                                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: hex, flexShrink: 0 }} />
+                                    <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{ci.title}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <button
+                              className="btn-outline"
+                              style={{ padding: "5px 12px", fontSize: 12 }}
+                              onClick={() => { setPickerSectionIdx(null); setPickerSearch(""); }}
+                            >Cancel</button>
+                          </div>
+                        ) : createSectionIdx === si ? (
+                          <div style={{ marginTop: 6 }}>
+                            <input className="t-inp" style={{ marginBottom: 6, fontSize: 13 }} placeholder="Label *" value={createLabel} onChange={e => setCreateLabel(e.target.value)} autoFocus />
+                            <textarea className="t-inp" style={{ height: 56, resize: "vertical", fontSize: 12, marginBottom: 6 }} placeholder="Description (shown on expand)" value={createDetail} onChange={e => setCreateDetail(e.target.value)} />
+                            <input className="t-inp" style={{ fontSize: 12, marginBottom: 8 }} placeholder="Note / hint tag" value={createNote} onChange={e => setCreateNote(e.target.value)} />
+                            <div style={{ display: "flex", gap: 5, marginBottom: 8, flexWrap: "wrap" }}>
+                              {ITEM_COLORS.map(c => (
+                                <button key={c.id} onClick={() => setCreateColor(c.id)} style={{ width: 20, height: 20, borderRadius: "50%", background: c.hex, border: createColor === c.id ? "2px solid var(--text)" : "2px solid transparent", padding: 0, cursor: "pointer" }} />
+                              ))}
+                            </div>
+                            <div style={{ display: "flex", gap: 7 }}>
+                              <button className="btn-green" style={{ padding: "6px 14px", fontSize: 12 }} disabled={!createLabel.trim() || creating} onClick={() => createAndAdd(si)}>
+                                {creating ? "Saving…" : "Create & Add"}
+                              </button>
+                              <button className="btn-outline" style={{ padding: "6px 10px", fontSize: 12 }} onClick={() => { setCreateSectionIdx(null); setCreateLabel(""); setCreateDetail(""); setCreateNote(""); setCreateColor("gray"); }}>
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", gap: 7, marginTop: sec.items.length > 0 ? 6 : 0 }}>
+                            <button
+                              onClick={() => { setPickerSectionIdx(si); setCreateSectionIdx(null); setPickerSearch(""); }}
+                              style={{ flex: 1, background: "none", border: "1px dashed var(--border-2)", borderRadius: 7, cursor: "pointer", color: "var(--green)", fontSize: 12, fontWeight: 600, padding: "7px 0", fontFamily: "Inter, sans-serif" }}
+                            >+ From library</button>
+                            <button
+                              onClick={() => { setCreateSectionIdx(si); setPickerSectionIdx(null); }}
+                              style={{ flex: 1, background: "none", border: "1px dashed var(--border-2)", borderRadius: 7, cursor: "pointer", color: "var(--text-2)", fontSize: 12, fontWeight: 600, padding: "7px 0", fontFamily: "Inter, sans-serif" }}
+                            >+ New item</button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Add section */}
+              <button
+                onClick={addSection}
+                style={{ width: "100%", background: "none", border: "1px dashed var(--border-2)", borderRadius: 8, cursor: "pointer", color: "var(--text-2)", fontSize: 13, fontWeight: 600, padding: "9px 0", fontFamily: "Inter, sans-serif", marginBottom: 16 }}
+              >
+                + Add Section
+              </button>
+
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", borderTop: "1px solid var(--border)", paddingTop: 20 }}>
+                <button className="btn-outline" style={{ padding: "11px 22px", fontSize: 15 }} onClick={() => setTab("details")}>
+                  ← Details
+                </button>
+                <button className="btn-green" style={{ padding: "11px 28px", fontSize: 15 }} onClick={handleSave} disabled={!name.trim() || saving}>
+                  {saving ? "Saving…" : isEdit ? "Save Changes" : "Create Strategy"}
+                </button>
+              </div>
+            </>
+          )}
         </>
       )}
     </LightModal>

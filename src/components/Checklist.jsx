@@ -9,6 +9,12 @@ const COL = {
   red:    ['#1e2a4a','#fca5a5'], green:  ['#1e2a4a','#86efac'], gray:  ['#374151','#d1d5db'],
 }
 
+const ITEM_COLOR_HEX = {
+  gray: '#d1d5db', indigo: '#a8a4e8', purple: '#c7c4f0',
+  blue: '#93c5fd', teal:   '#6ee7d4', amber:  '#fcd34d',
+  coral: '#fca5a5', green: '#86efac',
+}
+
 function Checkbox({ checked, onChange }) {
   return (
     <button role="checkbox" aria-checked={checked} onClick={onChange}
@@ -273,7 +279,7 @@ export default function Checklist({ strategy, trades = [], onLogTrade, onBack })
 
   const visItems = sections.filter(sec => !sec.ref).flatMap(sec => sec.items.filter(i => !i.v || i.v === variant))
   const done     = visItems.filter(i => chk[i.id]).length
-  const total    = strategy.totals?.[variant] ?? visItems.length
+  const total    = visItems.length
   const pct      = total ? Math.round(done / total * 100) : 0
 
   const statusCol = pct === 100 ? 'var(--green)' : pct >= 60 ? '#d97706' : '#dc2626'
@@ -408,6 +414,7 @@ export default function Checklist({ strategy, trades = [], onLogTrade, onBack })
               {/* Items */}
               {vis.map((item, idx) => {
                 const isChk = chk[item.id], isExp = exp[item.id]
+                const itemDotColor = ITEM_COLOR_HEX[item.color ?? 'gray'] ?? '#d1d5db'
                 return (
                   <div key={item.id} style={{
                     display: 'flex', gap: 14, padding: '14px 20px',
@@ -420,7 +427,8 @@ export default function Checklist({ strategy, trades = [], onLogTrade, onBack })
                     }
                     <div style={{ flex: 1, cursor: item.detail ? 'pointer' : 'default' }} onClick={() => item.detail && toggleExp(item.id)}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                        <p style={{ fontSize: 14, color: isChk && !sec.ref ? 'var(--green)' : 'var(--text)', fontWeight: isChk ? 500 : 400, margin: 0, lineHeight: 1.4, textDecoration: isChk && !sec.ref ? 'none' : 'none' }}>
+                        <p style={{ fontSize: 14, color: isChk && !sec.ref ? 'var(--green)' : 'var(--text)', fontWeight: isChk ? 500 : 400, margin: 0, lineHeight: 1.4, display: 'flex', alignItems: 'center', gap: 7 }}>
+                          <span style={{ width: 7, height: 7, borderRadius: '50%', background: itemDotColor, flexShrink: 0, display: 'inline-block', marginTop: 1 }}/>
                           {item.label}
                         </p>
                         {item.detail && (

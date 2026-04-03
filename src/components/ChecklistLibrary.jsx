@@ -1,9 +1,21 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
+
+const ITEM_COLORS = [
+  { id: "gray",   hex: "#d1d5db" },
+  { id: "indigo", hex: "#a8a4e8" },
+  { id: "purple", hex: "#c7c4f0" },
+  { id: "blue",   hex: "#93c5fd" },
+  { id: "teal",   hex: "#6ee7d4" },
+  { id: "amber",  hex: "#fcd34d" },
+  { id: "coral",  hex: "#fca5a5" },
+  { id: "green",  hex: "#86efac" },
+];
 
 function ItemModal({ item, onSave, onClose }) {
   const [label, setLabel] = useState(item?.title ?? "");
   const [detail, setDetail] = useState(item?.description ?? "");
   const [note, setNote] = useState(item?.note ?? "");
+  const [color, setColor] = useState(item?.color ?? "gray");
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
@@ -15,6 +27,7 @@ function ItemModal({ item, onSave, onClose }) {
         title: label.trim(),
         description: detail.trim() || null,
         note: note.trim() || null,
+        color,
       });
       onClose();
     } finally {
@@ -114,11 +127,34 @@ function ItemModal({ item, onSave, onClose }) {
         <label style={lbl}>Note / hint tag</label>
         <input
           className="t-inp"
-          style={{ marginBottom: 24, fontSize: 13 }}
+          style={{ marginBottom: 20, fontSize: 13 }}
           placeholder="e.g. Check on TradingView"
           value={note}
           onChange={(e) => setNote(e.target.value)}
         />
+
+        <label style={lbl}>Color</label>
+        <div style={{ display: "flex", gap: 8, marginBottom: 24, flexWrap: "wrap" }}>
+          {ITEM_COLORS.map((c) => (
+            <button
+              key={c.id}
+              title={c.id}
+              onClick={() => setColor(c.id)}
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: "50%",
+                background: c.hex,
+                border: color === c.id ? "3px solid var(--text)" : "3px solid transparent",
+                cursor: "pointer",
+                outline: color === c.id ? `2px solid ${c.hex}` : "none",
+                outlineOffset: 1,
+                transition: "border 0.1s",
+                padding: 0,
+              }}
+            />
+          ))}
+        </div>
 
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <button
@@ -142,10 +178,121 @@ function ItemModal({ item, onSave, onClose }) {
   );
 }
 
-export default function ChecklistLibrary({ items = [], onUpsert, onDelete }) {
+function UsedByBadge({ stratNames }) {
+  const [hovered, setHovered] = useState(false);
+  const ref = useRef(null);
+  const count = stratNames.length;
+
+  return (
+    <div
+      ref={ref}
+      style={{ position: "relative", display: "inline-flex", alignItems: "center" }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+          padding: "2px 9px",
+          borderRadius: 20,
+          fontSize: 11,
+          fontWeight: 600,
+          background: count > 0 ? "rgba(45,122,95,0.10)" : "var(--surface-2)",
+          color: count > 0 ? "var(--green)" : "var(--text-3)",
+          border: count > 0 ? "1px solid rgba(45,122,95,0.25)" : "1px solid var(--border)",
+          cursor: count > 0 ? "default" : "default",
+          userSelect: "none",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {count > 0 ? (
+          <>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+            </svg>
+            {count} {count === 1 ? "strategy" : "strategies"}
+          </>
+        ) : (
+          "Unused"
+        )}
+      </span>
+      {hovered && count > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: "calc(100% + 6px)",
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: 10,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.14)",
+            padding: "10px 14px",
+            zIndex: 200,
+            minWidth: 160,
+            maxWidth: 260,
+            pointerEvents: "none",
+          }}
+        >
+          <p style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 8px" }}>
+            Used in
+          </p>
+          {stratNames.map((name, i) => (
+            <div
+              key={i}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "3px 0",
+                fontSize: 13,
+                color: "var(--text)",
+                fontWeight: 500,
+              }}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+              </svg>
+              {name}
+            </div>
+          ))}
+          {/* Tooltip arrow */}
+          <div style={{
+            position: "absolute",
+            bottom: -5,
+            left: "50%",
+            transform: "translateX(-50%) rotate(45deg)",
+            width: 8,
+            height: 8,
+            background: "var(--surface)",
+            borderRight: "1px solid var(--border)",
+            borderBottom: "1px solid var(--border)",
+          }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function ChecklistLibrary({ items = [], strats = [], onUpsert, onDelete }) {
   const [modal, setModal] = useState(null); // null | 'new' | item object
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [search, setSearch] = useState("");
+
+  // Compute which strategies each library item is used in (via join table data)
+  const usedByMap = {};
+  for (const item of items) {
+    usedByMap[item.id] = [];
+  }
+  for (const strat of strats) {
+    for (const itemId of strat.checklistItemIds ?? []) {
+      if (usedByMap[itemId] !== undefined) {
+        usedByMap[itemId].push(strat.name);
+      }
+    }
+  }
 
   const filtered = items.filter((i) =>
     i.title.toLowerCase().includes(search.toLowerCase()),
@@ -242,7 +389,9 @@ export default function ChecklistLibrary({ items = [], onUpsert, onDelete }) {
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {filtered.map((item) => (
+          {filtered.map((item) => {
+            const itemColor = ITEM_COLORS.find((c) => c.id === (item.color ?? "gray"))?.hex ?? "#d1d5db";
+            return (
             <div
               key={item.id}
               style={{
@@ -252,7 +401,8 @@ export default function ChecklistLibrary({ items = [], onUpsert, onDelete }) {
                 padding: "16px 20px",
                 display: "flex",
                 alignItems: "flex-start",
-                gap: 16,
+                gap: 14,
+                borderLeft: `3px solid ${itemColor}`,
               }}
             >
               <div style={{ flex: 1 }}>
@@ -262,8 +412,21 @@ export default function ChecklistLibrary({ items = [], onUpsert, onDelete }) {
                     fontWeight: 600,
                     color: "var(--text)",
                     margin: "0 0 4px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
                   }}
                 >
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: itemColor,
+                      flexShrink: 0,
+                      display: "inline-block",
+                    }}
+                  />
                   {item.title}
                 </p>
                 {item.description && (
@@ -294,7 +457,8 @@ export default function ChecklistLibrary({ items = [], onUpsert, onDelete }) {
                   </span>
                 )}
               </div>
-              <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+              <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "flex-start" }}>
+                <UsedByBadge stratNames={usedByMap[item.id] ?? []} />
                 <button
                   onClick={() => setModal(item)}
                   style={{
@@ -327,7 +491,8 @@ export default function ChecklistLibrary({ items = [], onUpsert, onDelete }) {
                 </button>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
