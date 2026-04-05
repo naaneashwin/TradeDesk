@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CARD, SEC_TITLE, ERROR_BOX, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, fmtINR, fmt2 } from "./shared";
+import { CARD, SEC_TITLE, ERROR_BOX, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, TradeExpectation, ZONE, fmtINR, fmt2 } from "./shared";
 
 export default function BearCallSpreadCalc() {
   const [form, setForm] = useState({ lowerStrike: "", lowerPremium: "", higherStrike: "", higherPremium: "", lots: "1", lotSize: "1" });
@@ -55,6 +55,15 @@ export default function BearCallSpreadCalc() {
             <StatCard label="Max Loss"     val={fmtINR(maxLoss)}     sub={`If price ≥ ${fmtINR(higherStrike)} at expiry`}           col="var(--red)" />
           </div>
           <div style={CARD}><p style={{ fontSize: 11, color: "var(--text-3)", margin: 0 }}>Reward / Risk: {fmt2(maxProfit / maxLoss)}× · Profit zone: price ≤ {fmtINR(breakeven)}</p></div>
+          <TradeExpectation
+            zones={[
+              ZONE.profit("MAX CREDIT", `Below ${fmtINR(lowerStrike)}`, `+${fmtINR(netCredit)}/unit`),
+              ZONE.eroding("ERODING", `${fmtINR(lowerStrike)} → ${fmtINR(higherStrike)}`, `BE at ${fmtINR(breakeven)}`),
+              ZONE.loss("MAX LOSS", `Above ${fmtINR(higherStrike)}`, `−${fmtINR(spreadWidth - netCredit)}/unit`),
+            ]}
+            ideal={`Price stays at or below ${fmtINR(lowerStrike)} at expiry. Keep the full credit of ${fmtINR(netCredit)}/unit.`}
+            exitRule={`Close at 50% of credit received. Exit quickly if price pushes above ${fmtINR(breakeven)}.`}
+          />
           <DissectPanel steps={[
             { label: "Spread Width", formula: `higherStrike − lowerStrike = ${fmtINR(higherStrike)} − ${fmtINR(lowerStrike)}`, result: fmtINR(spreadWidth) },
             { label: "Net Credit", formula: `lowerPremium − higherPremium = ${fmtINR(lowerPremium)} − ${fmtINR(higherPremium)}`, result: fmtINR(netCredit), resultCol: "var(--green)", note: "Net credit received upfront. This is your max profit per unit." },
@@ -63,7 +72,13 @@ export default function BearCallSpreadCalc() {
             { label: "Max Loss per Unit", formula: `spreadWidth − netCredit = ${fmtINR(spreadWidth)} − ${fmtINR(netCredit)}`, result: fmtINR(spreadWidth - netCredit), resultCol: "var(--red)" },
             { label: "Max Loss (position)", formula: `maxLossPerUnit × lots × lotSize = ${fmtINR(spreadWidth - netCredit)} × ${lots * lotSize}`, result: fmtINR(maxLoss), resultCol: "var(--red)", note: `Occurs when price closes ≥ ${fmtINR(higherStrike)} at expiry.` },
             { label: "Reward / Risk", formula: `maxProfit ÷ maxLoss = ${fmtINR(maxProfit)} ÷ ${fmtINR(maxLoss)}`, result: fmt2(maxProfit / maxLoss) + "×" },
-          ]} />
+          ]}
+          legs={valid ? [
+            { label: "Lower Call (Sell)", action: "Sell", qty: 1, type: "Call", strike: lowerStrike, premium: lowerPremium, desc: "The primary credit-collecting leg. Selling this closer-to-ATM call brings in most of the premium. You want price to stay at or below this strike so the call expires worthless." },
+            { label: "Higher Call (Buy)", action: "Buy", qty: 1, type: "Call", strike: higherStrike, premium: higherPremium, desc: "The protection leg that converts naked risk into a defined-risk spread. Without this, the short call would have unlimited loss potential. This caps your max loss at the spread width." },
+          ] : []}
+          lotQty={lots * lotSize}
+          />
           <PayoffChart
             pnlFn={(spot) => netCredit - Math.max(0, spot - lowerStrike) + Math.max(0, spot - higherStrike)}
             center={(lowerStrike + higherStrike) / 2}

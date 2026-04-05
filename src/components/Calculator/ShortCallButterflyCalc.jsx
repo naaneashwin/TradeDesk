@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CARD, SEC_TITLE, ERROR_BOX, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, fmtINR, fmt2 } from "./shared";
+import { CARD, SEC_TITLE, ERROR_BOX, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, TradeExpectation, ZONE, fmtINR, fmt2 } from "./shared";
 
 // Short Call Butterfly (mirror of long — collect credit):
 //   Sell 1 lower call, Buy 2 middle calls, Sell 1 upper call
@@ -132,7 +132,27 @@ export default function ShortCallButterflyCalc() {
             <StatCard label="Max Loss"        val={fmtINR(maxLoss)}    sub={`If price pins at middle ${fmtINR(mS)}`}             col="var(--red)" />
           </div>
 
-          <DissectPanel steps={dissectSteps} />
+          <TradeExpectation
+            zones={[
+              ZONE.profit("PROFIT", `Below ${fmtINR(lowerBE)}`, "Keep full credit"),
+              ZONE.eroding("ERODING", `${fmtINR(lowerBE)} → ${fmtINR(mS)}`, "Credit shrinks"),
+              ZONE.loss("MAX LOSS", `Around ${fmtINR(mS)}`, "Loss peaks at middle"),
+              ZONE.building("BUILDING", `${fmtINR(mS)} → ${fmtINR(upperBE)}`, "Credit rebuilds"),
+              ZONE.profit("PROFIT", `Above ${fmtINR(upperBE)}`, "Keep full credit"),
+            ]}
+            ideal={`A large move — well below ${fmtINR(lS)} or well above ${fmtINR(uS)}. Big move = max profit, small move = max loss.`}
+            exitRule="Exit if price is stalling near the middle strike — the max loss occurs right at a pin. Don't wait for expiry."
+          />
+
+          <DissectPanel
+            steps={dissectSteps}
+            legs={[
+              { label: "Lower Call (Sell)",  action: "Sell", qty: 1, type: "Call", strike: lS, premium: lP, desc: "Collects premium on the lower wing. This leg profits if price stays below the lower strike at expiry, and is part of the net credit received upfront." },
+              { label: "Middle Call (Buy)",  action: "Buy",  qty: 2, type: "Call", strike: mS, premium: mP, desc: "The core volatility legs — buying two ATM calls is the primary directional bet. These pay off if price makes a large move above the upper breakeven. They're your 'long volatility' exposure." },
+              { label: "Upper Call (Sell)",  action: "Sell", qty: 1, type: "Call", strike: uS, premium: uP, desc: "Collects premium on the upper wing. Combined with the lower short call, this funds the two long middle calls and creates the net credit. Caps maximum loss if price moves far above K3." },
+            ]}
+            lotQty={qty}
+          />
 
           <PayoffChart
             pnlFn={pnlFn}

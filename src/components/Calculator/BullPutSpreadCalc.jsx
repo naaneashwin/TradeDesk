@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CARD, SEC_TITLE, ERROR_BOX, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, fmtINR, fmt2 } from "./shared";
+import { CARD, SEC_TITLE, ERROR_BOX, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, TradeExpectation, ZONE, fmtINR, fmt2 } from "./shared";
 
 export default function BullPutSpreadCalc() {
   const [form, setForm] = useState({ higherStrike: "", higherPremium: "", lowerStrike: "", lowerPremium: "", lots: "1", lotSize: "1" });
@@ -55,6 +55,15 @@ export default function BullPutSpreadCalc() {
             <StatCard label="Max Loss"     val={fmtINR(maxLoss)}     sub={`If price ≤ ${fmtINR(lowerStrike)} at expiry`}             col="var(--red)" />
           </div>
           <div style={CARD}><p style={{ fontSize: 11, color: "var(--text-3)", margin: 0 }}>Reward / Risk: {fmt2(maxProfit / maxLoss)}× · Profit zone: price ≥ {fmtINR(breakeven)}</p></div>
+          <TradeExpectation
+            zones={[
+              ZONE.loss("MAX LOSS", `Below ${fmtINR(lowerStrike)}`, `−${fmtINR(spreadWidth - netCredit)}/unit`),
+              ZONE.building("BUILDING", `${fmtINR(lowerStrike)} → ${fmtINR(higherStrike)}`, `BE at ${fmtINR(breakeven)}`),
+              ZONE.profit("MAX CREDIT", `Above ${fmtINR(higherStrike)}`, `+${fmtINR(netCredit)}/unit`),
+            ]}
+            ideal={`Price stays at or above ${fmtINR(higherStrike)} at expiry. Keep the full credit of ${fmtINR(netCredit)}/unit.`}
+            exitRule={`Close at 50% of credit received. Exit quickly if price breaks below ${fmtINR(breakeven)}.`}
+          />
           <DissectPanel steps={[
             { label: "Spread Width", formula: `higherStrike − lowerStrike = ${fmtINR(higherStrike)} − ${fmtINR(lowerStrike)}`, result: fmtINR(spreadWidth) },
             { label: "Net Credit", formula: `higherPremium − lowerPremium = ${fmtINR(higherPremium)} − ${fmtINR(lowerPremium)}`, result: fmtINR(netCredit), resultCol: "var(--green)", note: "Net credit received upfront. This is your max profit per unit." },
@@ -63,7 +72,13 @@ export default function BullPutSpreadCalc() {
             { label: "Max Loss per Unit", formula: `spreadWidth − netCredit = ${fmtINR(spreadWidth)} − ${fmtINR(netCredit)}`, result: fmtINR(spreadWidth - netCredit), resultCol: "var(--red)" },
             { label: "Max Loss (position)", formula: `maxLossPerUnit × lots × lotSize = ${fmtINR(spreadWidth - netCredit)} × ${lots * lotSize}`, result: fmtINR(maxLoss), resultCol: "var(--red)", note: `Occurs when price closes ≤ ${fmtINR(lowerStrike)} at expiry.` },
             { label: "Reward / Risk", formula: `maxProfit ÷ maxLoss = ${fmtINR(maxProfit)} ÷ ${fmtINR(maxLoss)}`, result: fmt2(maxProfit / maxLoss) + "×" },
-          ]} />
+          ]}
+          legs={valid ? [
+            { label: "Higher Put (Sell)", action: "Sell", qty: 1, type: "Put", strike: higherStrike, premium: higherPremium, desc: "The primary credit-collecting leg. Selling this closer-to-ATM put brings in most of the premium. You want price to stay at or above this strike so the put expires worthless and you keep the full credit." },
+            { label: "Lower Put (Buy)", action: "Buy", qty: 1, type: "Put", strike: lowerStrike, premium: lowerPremium, desc: "The protection leg that limits your downside risk. Without it, the short put would lose heavily in a market crash. This turns unlimited risk into a defined max loss capped at the spread width." },
+          ] : []}
+          lotQty={lots * lotSize}
+          />
           <PayoffChart
             pnlFn={(spot) => netCredit - Math.max(0, higherStrike - spot) + Math.max(0, lowerStrike - spot)}
             center={(higherStrike + lowerStrike) / 2}

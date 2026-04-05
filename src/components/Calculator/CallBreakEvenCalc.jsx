@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CARD, SEC_TITLE, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, fmtINR, fmt2 } from "./shared";
+import { CARD, SEC_TITLE, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, TradeExpectation, ZONE, fmtINR, fmt2 } from "./shared";
 
 export default function CallBreakEvenCalc() {
   const [form, setForm] = useState({ strike: "", premium: "", lots: "1", lotSize: "1" });
@@ -42,12 +42,25 @@ export default function CallBreakEvenCalc() {
           </div>
 
           <div style={CARD}><p style={{ fontSize: 11, color: "var(--text-3)", margin: 0 }}>↑ Max Profit: Unlimited — profit grows as the stock rises above {fmtINR(breakeven)}</p></div>
+          <TradeExpectation
+            zones={[
+              ZONE.loss("LOSS", `Below ${fmtINR(breakeven)}`, "Debit gone, option expires worthless"),
+              ZONE.building("PROFIT ↑", `Above ${fmtINR(breakeven)}`, "Unlimited — grows with price", 3),
+            ]}
+            ideal={`Price rises above ${fmtINR(breakeven)} by expiry. Every rupee above the breakeven adds to profit — upside is unlimited.`}
+            exitRule={`Exit if price stalls below ${fmtINR(breakeven)} near expiry — time decay erodes long options rapidly in the final weeks.`}
+          />
           <DissectPanel steps={[
             { label: "Breakeven", formula: `strike + premium = ${fmtINR(strike)} + ${fmtINR(premium)}`, result: fmtINR(breakeven), resultCol: "var(--green)", note: "Stock must close above this level for the trade to profit at expiry." },
             { label: "Total Premium Cost", formula: `premium × lots × lotSize = ${fmtINR(premium)} × ${lots} × ${lotSize}`, result: fmtINR(totalCost), resultCol: "#d97706" },
             { label: "Max Loss", formula: `= Total Premium Cost`, result: fmtINR(totalCost), resultCol: "var(--red)", note: "Occurs if the option expires worthless (stock stays below strike)." },
             { label: "Max Profit", formula: "Unlimited — no cap as stock price rises", result: "∞", resultCol: "var(--green)" },
-          ]} />
+          ]}
+          legs={valid ? [
+            { label: "Call Option", action: "Buy", qty: 1, type: "Call", strike, premium, desc: "You pay the premium upfront for the right to buy the underlying at the strike price. Profit grows unlimited as price rises above the breakeven (Strike + Premium). Max loss is always capped at the premium paid." },
+          ] : []}
+          lotQty={lots * lotSize}
+          />
           <PayoffChart pnlFn={(spot) => Math.max(0, spot - strike) - premium} center={breakeven} breakevens={[breakeven]} title="Long Call — Payoff at Expiry" />
           <PLSimulator pnlFn={(spot) => Math.max(0, spot - strike) - premium} qty={lots * lotSize} breakevens={[breakeven]} legFns={[(spot) => Math.max(0, spot - strike) - premium]} legLabels={["Long Call"]} />
         </>

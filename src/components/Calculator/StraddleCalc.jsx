@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CARD, SEC_TITLE, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, fmtINR } from "./shared";
+import { CARD, SEC_TITLE, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, TradeExpectation, ZONE, fmtINR } from "./shared";
 
 export default function StraddleCalc() {
   const [form, setForm] = useState({ strike: "", callPremium: "", putPremium: "", lots: "1", lotSize: "1" });
@@ -51,6 +51,15 @@ export default function StraddleCalc() {
             <StatCard label="Max Loss"          val={fmtINR(totalCost)} sub="If price stays exactly at strike" col="var(--red)" />
             <StatCard label="Max Profit"        val="Unlimited"         sub="Price must move significantly in either direction" col="var(--green)" />
           </div>
+          <TradeExpectation
+            zones={[
+              ZONE.profit("PROFIT ↓", `Below ${fmtINR(lowerBreakeven)}`, "Grows as price falls", 2),
+              ZONE.loss("LOSS ZONE", `${fmtINR(lowerBreakeven)} → ${fmtINR(upperBreakeven)}`, `Max loss at ${fmtINR(strike)}`, 2),
+              ZONE.profit("PROFIT ↑", `Above ${fmtINR(upperBreakeven)}`, "Grows as price rises", 2),
+            ]}
+            ideal="A large move in either direction past a breakeven. Best entered before a known catalyst (earnings, event)."
+            exitRule="Exit early if price fails to move within the first half of the holding period — time decay rapidly erodes both legs near expiry."
+          />
           <DissectPanel steps={[
             { label: "Net Premium (cost per unit)", formula: `callPremium + putPremium = ${fmtINR(callPremium)} + ${fmtINR(putPremium)}`, result: fmtINR(netPremium), resultCol: "#d97706", note: "Total cost to buy both ATM options. This is your max loss per unit." },
             { label: "Total Position Cost", formula: `netPremium × lots × lotSize = ${fmtINR(netPremium)} × ${lots} × ${lotSize}`, result: fmtINR(totalCost), resultCol: "#d97706" },
@@ -58,7 +67,13 @@ export default function StraddleCalc() {
             { label: "Lower Breakeven", formula: `strike − netPremium = ${fmtINR(strike)} − ${fmtINR(netPremium)}`, result: fmtINR(lowerBreakeven), note: "Stock must close below this for downside profit." },
             { label: "Max Loss", formula: `= Total Cost (price pins exactly at strike)`, result: fmtINR(totalCost), resultCol: "var(--red)" },
             { label: "Max Profit", formula: "Unlimited in either direction beyond the breakevens", result: "∞", resultCol: "var(--green)" },
-          ]} />
+          ]}
+          legs={valid ? [
+            { label: "Call Option (ATM)", action: "Buy", qty: 1, type: "Call", strike, premium: callPremium, desc: "Provides the upside explosive leg. Gains value as price rises above the upper breakeven. The further price moves above the strike, the more profitable this leg becomes." },
+            { label: "Put Option (ATM)", action: "Buy", qty: 1, type: "Put", strike, premium: putPremium, desc: "Provides the downside explosive leg. Gains value as price falls below the lower breakeven. Mirrors the call leg — you profit from a crash in equal measure." },
+          ] : []}
+          lotQty={lots * lotSize}
+          />
           <PayoffChart
             pnlFn={(spot) => Math.abs(spot - strike) - netPremium}
             center={strike}

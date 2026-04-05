@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CARD, SEC_TITLE, ERROR_BOX, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, fmtINR, fmt2 } from "./shared";
+import { CARD, SEC_TITLE, ERROR_BOX, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, TradeExpectation, ZONE, fmtINR, fmt2 } from "./shared";
 
 // Long Put Butterfly:
 //   Buy 1 upper put, Sell 2 middle puts, Buy 1 lower put
@@ -131,7 +131,27 @@ export default function LongPutButterflyCalc() {
             <StatCard label="Max Loss"        val={fmtINR(maxLoss)}    sub="Net debit × qty — below lower or above upper"       col="var(--red)" />
           </div>
 
-          <DissectPanel steps={dissectSteps} />
+          <TradeExpectation
+            zones={[
+              ZONE.loss("LOSS", `Below ${fmtINR(lowerBE)}`, "Full debit lost"),
+              ZONE.building("BUILDING", `${fmtINR(lowerBE)} → ${fmtINR(mS)}`, "Profit rises to peak"),
+              ZONE.profit("PEAK ✓", `At ${fmtINR(mS)}`, "Max profit here"),
+              ZONE.eroding("ERODING", `${fmtINR(mS)} → ${fmtINR(upperBE)}`, "Profit falling"),
+              ZONE.loss("LOSS", `Above ${fmtINR(upperBE)}`, "Full debit lost"),
+            ]}
+            ideal={`Price pins exactly at ${fmtINR(mS)} at expiry. Symmetric payoff — expect the middle strike to hold.`}
+            exitRule="Exit at 50–60% of max profit — don't grind for the pin. Time decay cuts both wings hard near expiry."
+          />
+
+          <DissectPanel
+            steps={dissectSteps}
+            legs={[
+              { label: "Upper Put (Buy)",   action: "Buy",  qty: 1, type: "Put", strike: uS, premium: uP, desc: "The upper wing. Provides initial downside payoff from K3 down to K2. Sets the upper boundary of the profit zone and defines the upper breakeven." },
+              { label: "Middle Put (Sell)", action: "Sell", qty: 2, type: "Put", strike: mS, premium: mP, desc: "The body of the butterfly — selling two ATM puts is the primary income mechanism. The peak profit occurs exactly at this strike at expiry. Selling twice creates the mountain-shaped payoff profile." },
+              { label: "Lower Put (Buy)",   action: "Buy",  qty: 1, type: "Put", strike: lS, premium: lP, desc: "The lower wing (hedge). Without this, selling 2 middle puts would expose you to unlimited downside risk. This put caps your max loss if price crashes below K1, completing the defined-risk structure." },
+            ]}
+            lotQty={qty}
+          />
 
           <PayoffChart
             pnlFn={pnlFn}

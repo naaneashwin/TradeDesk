@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CARD, SEC_TITLE, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, fmtINR } from "./shared";
+import { CARD, SEC_TITLE, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, TradeExpectation, ZONE, fmtINR } from "./shared";
 
 export default function ShortPutCalc() {
   const [form, setForm] = useState({ strike: "", premium: "", lots: "1", lotSize: "1" });
@@ -41,12 +41,26 @@ export default function ShortPutCalc() {
             <StatCard label="Max Loss"         val={fmtINR(maxLoss)}     sub="If stock falls to ₹0 — Strike − Premium × Qty" col="var(--red)" />
           </div>
           <div style={CARD}><p style={{ fontSize: 11, color: "var(--text-3)", margin: 0 }}>Profit zone: stock ≥ {fmtINR(breakeven)} at expiry · Loss grows as stock falls below breakeven</p></div>
+          <TradeExpectation
+            zones={[
+              ZONE.loss("LOSS ↓", `Below ${fmtINR(breakeven)}`, "Loss grows as price falls", 2),
+              ZONE.building("RECOVERING", `${fmtINR(breakeven)} → ${fmtINR(strike)}`, "Loss shrinks"),
+              ZONE.profit("MAX PROFIT", `Above ${fmtINR(strike)}`, "Keep full credit", 2),
+            ]}
+            ideal={`Price stays at or above ${fmtINR(strike)} at expiry. Pocket the full ${fmtINR(premium)}/unit in credit.`}
+            exitRule={`Buy back the put (close) if price falls toward ${fmtINR(breakeven)} — a sharp decline causes rapid, compounding losses.`}
+          />
           <DissectPanel steps={[
             { label: "Breakeven", formula: `strike − premiumReceived = ${fmtINR(strike)} − ${fmtINR(premium)}`, result: fmtINR(breakeven), resultCol: "var(--green)", note: "Stock must stay at or above this level for the trade to remain profitable." },
             { label: "Total Credit Received", formula: `premium × lots × lotSize = ${fmtINR(premium)} × ${lots} × ${lotSize}`, result: fmtINR(totalCredit), resultCol: "var(--green)" },
             { label: "Max Profit", formula: `= Total Credit Received (stock ≥ strike at expiry)`, result: fmtINR(totalCredit), resultCol: "var(--green)" },
             { label: "Max Loss (theoretical)", formula: `breakeven × qty = ${fmtINR(breakeven)} × ${lots * lotSize}`, result: fmtINR(maxLoss), resultCol: "var(--red)", note: "Worst case if stock falls to ₹0. In practice, losses grow as stock falls below breakeven." },
-          ]} />
+          ]}
+          legs={valid ? [
+            { label: "Put Option", action: "Sell", qty: 1, type: "Put", strike, premium, desc: "You receive the premium upfront and are obligated to buy shares at the strike price if assigned. Profit is capped at the premium collected. Loss grows as price falls below the breakeven — theoretical worst case is if the underlying goes to zero." },
+          ] : []}
+          lotQty={lots * lotSize}
+          />
           <PayoffChart pnlFn={(spot) => premium - Math.max(0, strike - spot)} center={breakeven} breakevens={[breakeven]} title="Short Put — Payoff at Expiry" />
           <PLSimulator pnlFn={(spot) => premium - Math.max(0, strike - spot)} qty={lots * lotSize} breakevens={[breakeven]} isShort legFns={[(spot) => premium - Math.max(0, strike - spot)]} legLabels={["Short Put"]} />
         </>

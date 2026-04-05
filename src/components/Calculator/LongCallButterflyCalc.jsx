@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CARD, SEC_TITLE, ERROR_BOX, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, fmtINR, fmt2 } from "./shared";
+import { CARD, SEC_TITLE, ERROR_BOX, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, TradeExpectation, ZONE, fmtINR, fmt2 } from "./shared";
 
 // Long Call Butterfly:
 //   Buy 1 lower call, Sell 2 middle calls, Buy 1 upper call
@@ -134,7 +134,27 @@ export default function LongCallButterflyCalc() {
             <StatCard label="Max Loss"        val={fmtINR(maxLoss)}    sub="Net debit × qty — below lower or above upper"       col="var(--red)" />
           </div>
 
-          <DissectPanel steps={dissectSteps} />
+          <TradeExpectation
+            zones={[
+              ZONE.loss("LOSS", `Below ${fmtINR(lowerBE)}`, "Full debit lost"),
+              ZONE.building("BUILDING", `${fmtINR(lowerBE)} → ${fmtINR(mS)}`, "Profit rises to peak"),
+              ZONE.profit("PEAK ✓", `At ${fmtINR(mS)}`, "Max profit here"),
+              ZONE.eroding("ERODING", `${fmtINR(mS)} → ${fmtINR(upperBE)}`, "Profit falling"),
+              ZONE.loss("LOSS", `Above ${fmtINR(upperBE)}`, "Full debit lost"),
+            ]}
+            ideal={`Price pins exactly at ${fmtINR(mS)} at expiry. Even a partial profit near the middle strike is a win.`}
+            exitRule="Exit at 50–60% of max profit — don't hold hoping for a pin. A pinned strike at expiry is rare and greedy."
+          />
+
+          <DissectPanel
+            steps={dissectSteps}
+            legs={[
+              { label: "Lower Call (Buy)",   action: "Buy",  qty: 1, type: "Call", strike: lS, premium: lP, desc: "The lower wing. Establishes your directional exposure between K1 and K2. This leg pays off as price rises from the lower strike, and defines your lower breakeven point." },
+              { label: "Middle Call (Sell)", action: "Sell", qty: 2, type: "Call", strike: mS, premium: mP, desc: "The body of the butterfly — selling two ATM calls is the core income-generating mechanism. Selling twice creates the profit peak exactly at this strike at expiry. This leg also significantly reduces your net debit." },
+              { label: "Upper Call (Buy)",   action: "Buy",  qty: 1, type: "Call", strike: uS, premium: uP, desc: "The upper wing (hedge). Without this, selling 2 middle calls would expose you to unlimited upside risk. This call caps your maximum loss if price rallies beyond K3, making the whole position a defined-risk trade." },
+            ]}
+            lotQty={qty}
+          />
 
           <PayoffChart
             pnlFn={pnlFn}

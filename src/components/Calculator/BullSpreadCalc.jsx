@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CARD, SEC_TITLE, ERROR_BOX, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, fmtINR, fmt2 } from "./shared";
+import { CARD, SEC_TITLE, ERROR_BOX, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, TradeExpectation, ZONE, fmtINR, fmt2 } from "./shared";
 
 export default function BullSpreadCalc() {
   const [form, setForm] = useState({ lowerStrike: "", lowerPremium: "", upperStrike: "", upperPremium: "", lots: "1", lotSize: "1" });
@@ -55,6 +55,15 @@ export default function BullSpreadCalc() {
             <StatCard label="Max Loss"     val={fmtINR(maxLoss)}     sub={`If price ≤ ${fmtINR(lowerStrike)} at expiry`} col="var(--red)" />
           </div>
           <div style={CARD}><p style={{ fontSize: 11, color: "var(--text-3)", margin: 0 }}>Reward / Risk: {fmt2(maxProfit / maxLoss)}× · Profit zone: {fmtINR(breakeven)} – {fmtINR(upperStrike)}</p></div>
+          <TradeExpectation
+            zones={[
+              ZONE.loss("MAX LOSS", `Below ${fmtINR(lowerStrike)}`, `−${fmtINR(netDebit)}/unit`),
+              ZONE.building("BUILDING", `${fmtINR(lowerStrike)} → ${fmtINR(upperStrike)}`, `BE at ${fmtINR(breakeven)}`),
+              ZONE.profit("CAPPED ✓", `Above ${fmtINR(upperStrike)}`, `+${fmtINR(spreadWidth - netDebit)}/unit`),
+            ]}
+            ideal={`Price rises to or above ${fmtINR(upperStrike)} by expiry. Max profit = ${fmtINR(spreadWidth - netDebit)}/unit.`}
+            exitRule="Exit at 60–70% of max profit rather than holding to expiry — the final gains are not worth the increased pin risk."
+          />
           <DissectPanel steps={[
             { label: "Spread Width", formula: `upperStrike − lowerStrike = ${fmtINR(upperStrike)} − ${fmtINR(lowerStrike)}`, result: fmtINR(spreadWidth) },
             { label: "Net Debit", formula: `lowerPremium − upperPremium = ${fmtINR(lowerPremium)} − ${fmtINR(upperPremium)}`, result: fmtINR(netDebit), resultCol: "#d97706", note: "Net cost paid to enter the spread. This is your max loss per unit." },
@@ -63,7 +72,13 @@ export default function BullSpreadCalc() {
             { label: "Max Profit per Unit", formula: `spreadWidth − netDebit = ${fmtINR(spreadWidth)} − ${fmtINR(netDebit)}`, result: fmtINR(spreadWidth - netDebit), resultCol: "var(--green)" },
             { label: "Max Profit (position)", formula: `maxProfitPerUnit × lots × lotSize = ${fmtINR(spreadWidth - netDebit)} × ${lots * lotSize}`, result: fmtINR(maxProfit), resultCol: "var(--green)", note: `Achieved when price closes ≥ ${fmtINR(upperStrike)} at expiry.` },
             { label: "Reward / Risk", formula: `maxProfit ÷ maxLoss = ${fmtINR(maxProfit)} ÷ ${fmtINR(maxLoss)}`, result: fmt2(maxProfit / maxLoss) + "×" },
-          ]} />
+          ]}
+          legs={valid ? [
+            { label: "Lower Call (Buy)", action: "Buy", qty: 1, type: "Call", strike: lowerStrike, premium: lowerPremium, desc: "The core bullish directional leg. Gains value as the underlying rises above the lower strike. This is what gives you upside exposure." },
+            { label: "Upper Call (Sell)", action: "Sell", qty: 1, type: "Call", strike: upperStrike, premium: upperPremium, desc: "The premium-collection leg that funds part of the lower call purchase. Selling this higher strike call reduces your net cost significantly but caps your maximum profit at the upper strike." },
+          ] : []}
+          lotQty={lots * lotSize}
+          />
           <PayoffChart
             pnlFn={(spot) => Math.min(Math.max(0, spot - lowerStrike), spreadWidth) - netDebit}
             center={(lowerStrike + upperStrike) / 2}

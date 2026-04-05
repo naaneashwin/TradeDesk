@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CARD, SEC_TITLE, ERROR_BOX, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, fmtINR } from "./shared";
+import { CARD, SEC_TITLE, ERROR_BOX, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, TradeExpectation, ZONE, fmtINR } from "./shared";
 
 export default function ShortStrangleCalc() {
   const [form, setForm] = useState({ callStrike: "", callPremium: "", putStrike: "", putPremium: "", lots: "1", lotSize: "1" });
@@ -57,6 +57,15 @@ export default function ShortStrangleCalc() {
             <StatCard label="Max Profit"          val={fmtINR(totalCredit)} sub={`Price stays between ${fmtINR(putStrike)} – ${fmtINR(callStrike)}`}  col="var(--green)" />
             <StatCard label="Max Loss"            val="Unlimited"            sub="Price breaks out beyond either breakeven"                            col="var(--red)" />
           </div>
+          <TradeExpectation
+            zones={[
+              ZONE.loss("LOSS", `Below ${fmtINR(lowerBreakeven)}`, "Loss grows with the fall", 2),
+              ZONE.profit("MAX PROFIT", `${fmtINR(lowerBreakeven)} → ${fmtINR(upperBreakeven)}`, "Wide safe zone", 2),
+              ZONE.loss("LOSS", `Above ${fmtINR(upperBreakeven)}`, "Loss grows with the rally", 2),
+            ]}
+            ideal={`Price stays between ${fmtINR(putStrike)} and ${fmtINR(callStrike)}. Wider safe zone than a straddle.`}
+            exitRule="Close at 50% of credit. Monitor both wings — exit the moment either breakeven is threatened."
+          />
           <DissectPanel steps={[
             { label: "Net Credit (per unit)", formula: `callPremium + putPremium = ${fmtINR(callPremium)} + ${fmtINR(putPremium)}`, result: fmtINR(netCredit), resultCol: "var(--green)", note: "Total credit collected upfront. This is your max profit per unit." },
             { label: "Total Credit (position)", formula: `netCredit × lots × lotSize = ${fmtINR(netCredit)} × ${lots} × ${lotSize}`, result: fmtINR(totalCredit), resultCol: "var(--green)" },
@@ -64,7 +73,13 @@ export default function ShortStrangleCalc() {
             { label: "Lower Breakeven", formula: `putStrike − netCredit = ${fmtINR(putStrike)} − ${fmtINR(netCredit)}`, result: fmtINR(lowerBreakeven), note: "Price must stay above this level to avoid loss on the downside." },
             { label: "Max Profit", formula: `= Total Credit (price stays inside both strikes)`, result: fmtINR(totalCredit), resultCol: "var(--green)" },
             { label: "Max Loss", formula: "Unlimited — accelerates for every rupee beyond either breakeven", result: "∞", resultCol: "var(--red)" },
-          ]} />
+          ]}
+          legs={valid ? [
+            { label: "Call Option (OTM)", action: "Sell", qty: 1, type: "Call", strike: callStrike, premium: callPremium, desc: "Sold OTM call — collects premium with a buffer zone above the current price. Profitable as long as price stays below the upper breakeven. Unlimited loss if price breaks far above." },
+            { label: "Put Option (OTM)", action: "Sell", qty: 1, type: "Put", strike: putStrike, premium: putPremium, desc: "Sold OTM put — collects premium with a buffer zone below the current price. Profitable as long as price stays above the lower breakeven. Loss accelerates on a sharp downward move." },
+          ] : []}
+          lotQty={lots * lotSize}
+          />
           <PayoffChart
             pnlFn={(spot) => netCredit - Math.max(0, spot - callStrike) - Math.max(0, putStrike - spot)}
             center={(callStrike + putStrike) / 2}

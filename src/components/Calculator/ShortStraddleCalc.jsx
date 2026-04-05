@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CARD, SEC_TITLE, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, fmtINR } from "./shared";
+import { CARD, SEC_TITLE, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, TradeExpectation, ZONE, fmtINR } from "./shared";
 
 export default function ShortStraddleCalc() {
   const [form, setForm] = useState({ strike: "", callPremium: "", putPremium: "", lots: "1", lotSize: "1" });
@@ -51,6 +51,15 @@ export default function ShortStraddleCalc() {
             <StatCard label="Max Profit"          val={fmtINR(totalCredit)} sub="If price pins exactly at strike at expiry"     col="var(--green)" />
             <StatCard label="Max Loss"            val="Unlimited"            sub="Any significant move in either direction"     col="var(--red)" />
           </div>
+          <TradeExpectation
+            zones={[
+              ZONE.loss("LOSS", `Below ${fmtINR(lowerBreakeven)}`, "Loss grows with fall", 2),
+              ZONE.profit("MAX PROFIT", `${fmtINR(lowerBreakeven)} → ${fmtINR(upperBreakeven)}`, `Best at ${fmtINR(strike)}`, 2),
+              ZONE.loss("LOSS", `Above ${fmtINR(upperBreakeven)}`, "Loss grows with rally", 2),
+            ]}
+            ideal={`Price stays near ${fmtINR(strike)} until expiry. Time decay works in your favour every single day.`}
+            exitRule="Close at 50% of max credit. Never hold a short straddle through an unhedged large move — losses are unlimited."
+          />
           <DissectPanel steps={[
             { label: "Net Credit (per unit)", formula: `callPremium + putPremium = ${fmtINR(callPremium)} + ${fmtINR(putPremium)}`, result: fmtINR(netCredit), resultCol: "var(--green)", note: "Max premium possible since both legs are ATM. This is your max profit per unit." },
             { label: "Total Credit (position)", formula: `netCredit × lots × lotSize = ${fmtINR(netCredit)} × ${lots} × ${lotSize}`, result: fmtINR(totalCredit), resultCol: "var(--green)" },
@@ -58,7 +67,13 @@ export default function ShortStraddleCalc() {
             { label: "Lower Breakeven", formula: `strike − netCredit = ${fmtINR(strike)} − ${fmtINR(netCredit)}`, result: fmtINR(lowerBreakeven), note: "Any close below this triggers a net loss." },
             { label: "Max Profit", formula: `= Total Credit (price pins at ${fmtINR(strike)})`, result: fmtINR(totalCredit), resultCol: "var(--green)" },
             { label: "Max Loss", formula: "Unlimited — grows with every rupee beyond either breakeven", result: "∞", resultCol: "var(--red)" },
-          ]} />
+          ]}
+          legs={valid ? [
+            { label: "Call Option (ATM)", action: "Sell", qty: 1, type: "Call", strike, premium: callPremium, desc: "Collects premium on the upside. Profits as long as price stays below the upper breakeven. Loss accelerates without limit if price spikes above it." },
+            { label: "Put Option (ATM)", action: "Sell", qty: 1, type: "Put", strike, premium: putPremium, desc: "Collects premium on the downside. Profits as long as price stays above the lower breakeven. Loss accelerates without limit if price crashes below it." },
+          ] : []}
+          lotQty={lots * lotSize}
+          />
           <PayoffChart
             pnlFn={(spot) => netCredit - Math.abs(spot - strike)}
             center={strike}

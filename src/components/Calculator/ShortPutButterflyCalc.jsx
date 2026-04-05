@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CARD, SEC_TITLE, ERROR_BOX, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, fmtINR, fmt2 } from "./shared";
+import { CARD, SEC_TITLE, ERROR_BOX, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, TradeExpectation, ZONE, fmtINR, fmt2 } from "./shared";
 
 // Short Put Butterfly (mirror of long put — collect credit):
 //   Sell 1 upper put, Buy 2 middle puts, Sell 1 lower put
@@ -132,7 +132,27 @@ export default function ShortPutButterflyCalc() {
             <StatCard label="Max Loss"        val={fmtINR(maxLoss)}    sub={`If price pins at middle ${fmtINR(mS)}`}             col="var(--red)" />
           </div>
 
-          <DissectPanel steps={dissectSteps} />
+          <TradeExpectation
+            zones={[
+              ZONE.profit("PROFIT", `Below ${fmtINR(lowerBE)}`, "Keep full credit"),
+              ZONE.eroding("ERODING", `${fmtINR(lowerBE)} → ${fmtINR(mS)}`, "Credit shrinks"),
+              ZONE.loss("MAX LOSS", `Around ${fmtINR(mS)}`, "Loss peaks at middle"),
+              ZONE.building("BUILDING", `${fmtINR(mS)} → ${fmtINR(upperBE)}`, "Credit rebuilds"),
+              ZONE.profit("PROFIT", `Above ${fmtINR(upperBE)}`, "Keep full credit"),
+            ]}
+            ideal={`A large move — well below ${fmtINR(lS)} or well above ${fmtINR(uS)}. Big move = max profit, small move = max loss.`}
+            exitRule="Exit if price is stalling near the middle strike — the max loss occurs right at a pin. Don't wait."
+          />
+
+          <DissectPanel
+            steps={dissectSteps}
+            legs={[
+              { label: "Upper Put (Sell)",  action: "Sell", qty: 1, type: "Put", strike: uS, premium: uP, desc: "Collects premium on the upper wing. Part of the net credit received. Profits when price stays above the upper put strike or breaks far below the lower wing." },
+              { label: "Middle Put (Buy)",  action: "Buy",  qty: 2, type: "Put", strike: mS, premium: mP, desc: "The core volatility legs — buying two ATM puts gives you direct downside exposure. They pay off significantly if price makes a large move away from the middle strike." },
+              { label: "Lower Put (Sell)",  action: "Sell", qty: 1, type: "Put", strike: lS, premium: lP, desc: "Collects premium on the lower wing. Together with the upper short put, the combined credit from both wings funds the two long middle puts. Caps maximum loss on an extreme downside move." },
+            ]}
+            lotQty={qty}
+          />
 
           <PayoffChart
             pnlFn={pnlFn}

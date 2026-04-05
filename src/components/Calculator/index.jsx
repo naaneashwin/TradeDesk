@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { DIR_STYLE } from "./shared";
+import { DIR_STYLE, SimSpotProvider } from "./shared";
+import { useSearchParams } from "react-router-dom";
 import PositionSizeCalc           from "./PositionSizeCalc";
 import CallBreakEvenCalc          from "./CallBreakEvenCalc";
 import PutBreakEvenCalc           from "./PutBreakEvenCalc";
@@ -17,7 +18,11 @@ import LongCallButterflyCalc      from "./LongCallButterflyCalc";
 import LongPutButterflyCalc       from "./LongPutButterflyCalc";
 import ShortCallButterflyCalc     from "./ShortCallButterflyCalc";
 import ShortPutButterflyCalc      from "./ShortPutButterflyCalc";
+import CondorCalc                 from "./CondorCalc";
+import LongIronCondorCalc         from "./LongIronCondorCalc";
+import ShortIronCondorCalc        from "./ShortIronCondorCalc";
 import StraddleStrangleComparator from "./StraddleStrangleComparator";
+import BullCallRatioCalc          from "./BullCallRatioCalc";
 
 // ─── Calculator registry ──────────────────────────────────────────
 const CALCULATORS = [
@@ -39,10 +44,14 @@ const CALCULATORS = [
   { id: "long-put-butterfly",     label: "Long Put Butterfly",      component: LongPutButterflyCalc },
   { id: "short-call-butterfly",   label: "Short Call Butterfly",    component: ShortCallButterflyCalc },
   { id: "short-put-butterfly",    label: "Short Put Butterfly",     component: ShortPutButterflyCalc },
+  { id: "condor",                 label: "Long Call Condor",        component: CondorCalc },
+  { id: "long-iron-condor",       label: "Long Iron Condor",        component: LongIronCondorCalc },
+  { id: "short-iron-condor",      label: "Short Iron Condor",       component: ShortIronCondorCalc },
+  { id: "bull-call-ratio",         label: "Bull Call Ratio Spread",  component: BullCallRatioCalc },
 ];
 
-// ─── Per-calculator metadata ──────────────────────────────────────
-const CALC_META = {
+// ─── Per-calculator metadata — also exported for the Strategy Playbook ───
+export const CALC_META = {
   position: {
     direction: "selectable",
     outlook: null,
@@ -337,6 +346,84 @@ const CALC_META = {
       { name: "Upper Premium",         desc: "Premium received for the upper wing put." },
     ],
   },
+  "condor": {
+    direction: "neutral",
+    outlook: "Neutral — Low Volatility (Wider Range)",
+    whenToUse: "You expect the underlying to stay between two middle strikes but want a wider profit zone than a butterfly. More forgiving than a butterfly — inner profit zone is larger.",
+    risk: "Limited — capped at net debit × lot size.",
+    reward: "Limited — max profit = (K2 − K1 − net debit) × lot size when price is between K2 and K3.",
+    summary: "Buy 1 K1 call + Sell 1 K2 call + Sell 1 K3 call + Buy 1 K4 call. Profit if price is between K2 and K3 at expiry. Wider inner profit zone than a butterfly. Net debit strategy with defined risk and reward.",
+    howItWorks: "The two short inner calls partially fund the two long outer calls. You pay a small net debit. You profit if the underlying closes anywhere between K2 and K3. This gives you a wider profit window than a butterfly (which profits only at the middle strike).",
+    formula: "Net Debit   = (P1 + P4) − (P2 + P3)\nLower BE    = K1 + Net Debit\nUpper BE    = K4 − Net Debit\nMax Profit  = (K2 − K1 − Net Debit) × Qty\nMax Loss    = Net Debit × Qty",
+    fields: [
+      { name: "K1 (Buy)",  desc: "Lowest call — buy for downside protection." },
+      { name: "K1 Premium", desc: "Premium paid for K1 call." },
+      { name: "K2 (Sell)", desc: "Lower inner strike — sell to collect credit." },
+      { name: "K2 Premium", desc: "Premium received for K2 call." },
+      { name: "K3 (Sell)", desc: "Upper inner strike — sell to collect credit." },
+      { name: "K3 Premium", desc: "Premium received for K3 call." },
+      { name: "K4 (Buy)",  desc: "Highest call — buy to cap maximum loss." },
+      { name: "K4 Premium", desc: "Premium paid for K4 call." },
+    ],
+  },
+  "long-iron-condor": {
+    direction: "neutral",
+    outlook: "Neutral — High Volatility (Expects Big Move)",
+    whenToUse: "You expect a large move in either direction but are unsure which way. Net debit strategy — profits if price breaks out beyond the inner strikes.",
+    risk: "Limited — net debit paid × lot size (occurs when price stays between K2 and K3).",
+    reward: "Limited — max profit = (spread width − net debit) × lot size when price moves decisively outside.",
+    summary: "Sell K1 put + Buy K2 put (bear put spread) + Buy K3 call + Sell K4 call (bull call spread). Net debit. Profits if price drops below K2 or rises above K3. Opposite of the short iron condor.",
+    howItWorks: "You pay a debit to buy a bear put spread and a bull call spread simultaneously. The position profits when the underlying makes a large move in either direction. Max loss occurs when price stays rangebound between K2 and K3 — both spreads expire worthless.",
+    formula: "Net Debit   = (K2 Put − K1 Put) + (K3 Call − K4 Call)\nLower BE    = K2 − Net Debit\nUpper BE    = K3 + Net Debit\nMax Profit  = Spread Width − Net Debit (per side)\nMax Loss    = Net Debit × Qty",
+    fields: [
+      { name: "K1 Put Sell Strike", desc: "Lower OTM put — sell to reduce debit on put side." },
+      { name: "K1 Put Premium",    desc: "Premium received for K1 put." },
+      { name: "K2 Put Buy Strike", desc: "Upper OTM put — buy for downside exposure." },
+      { name: "K2 Put Premium",    desc: "Premium paid for K2 put." },
+      { name: "K3 Call Buy Strike", desc: "Lower OTM call — buy for upside exposure." },
+      { name: "K3 Call Premium",   desc: "Premium paid for K3 call." },
+      { name: "K4 Call Sell Strike", desc: "Upper OTM call — sell to reduce debit on call side." },
+      { name: "K4 Call Premium",   desc: "Premium received for K4 call." },
+    ],
+  },
+  "bull-call-ratio": {
+    direction: "long",
+    outlook: "Moderately Bullish (with defined upside risk)",
+    whenToUse: "You are mildly to moderately bullish and want to reduce the cost of a long call by selling two higher-strike calls. Best when you expect the underlying to rally to a specific target level but not blow past it.",
+    risk: "Unlimited above the upper breakeven — the strategy becomes net short 1 call above K2, so losses grow without bound if the underlying surges.",
+    reward: "Limited — max profit at K2 = Spread Width + Net Credit (or − Net Debit).",
+    summary: "Buy 1 ATM/OTM call (K1) and sell 2 OTM calls at a higher strike (K2). The short calls partially or fully fund the long call. Max profit occurs exactly at K2 at expiry. Risk is unlimited above the upper breakeven.",
+    howItWorks: "You buy 1 call for directional exposure, then sell 2 calls at a higher strike to reduce cost. Since you sold more calls than you bought, you are net short 1 call above K2. This means losses accelerate if the stock rallies strongly past the upper breakeven — the key difference from a simple bull spread.",
+    formula: "Net Credit/Debit = 2×K2 Premium − K1 Premium\nMax Profit (at K2) = (K2 − K1) + Net Credit\nUpper BE = 2×K2 − K1 + Net Credit\nLower BE = K1 + Net Debit (if net debit only)\nMax Loss = Unlimited above upper BE",
+    fields: [
+      { name: "Buy Strike (K1)",        desc: "Strike of the 1 call you buy. Usually ATM or slightly OTM." },
+      { name: "K1 Premium Paid",         desc: "Premium paid per unit for the long call." },
+      { name: "Sell Strike (K2)",        desc: "Strike of the 2 calls you sell. Must be higher than K1." },
+      { name: "K2 Premium Received",     desc: "Premium received per unit per short call leg. Total received = 2 × this." },
+      { name: "Number of Lots",          desc: "Contract multiplier for sizing." },
+      { name: "Lot Size",                desc: "Units per lot." },
+    ],
+  },
+  "short-iron-condor": {
+    direction: "neutral",
+    outlook: "Neutral — Low Volatility (Classic Iron Condor)",
+    whenToUse: "You expect the underlying to stay in a defined range until expiry. Collect a net credit upfront and keep it if price stays between the two sold strikes.",
+    risk: "Limited — max loss = (spread width − net credit) × lot size when price breaks out.",
+    reward: "Limited — max profit = net credit × lot size when price stays between K2 and K3.",
+    summary: "Buy K1 put + Sell K2 put (bull put spread) + Sell K3 call + Buy K4 call (bear call spread). Net credit. The most popular defined-risk premium-selling strategy. Profit if price stays between K2 and K3 at expiry.",
+    howItWorks: "You simultaneously sell a put credit spread and a call credit spread, collecting net credit upfront. As long as the underlying stays between the two sold strikes (K2 and K3) you keep the full credit. If price breaks out through either wing, losses are capped by the long options.",
+    formula: "Net Credit  = (K2 Put − K1 Put) + (K3 Call − K4 Call)\nLower BE    = K2 − Net Credit\nUpper BE    = K3 + Net Credit\nMax Profit  = Net Credit × Qty\nMax Loss    = (Max Spread Width − Net Credit) × Qty",
+    fields: [
+      { name: "K1 Put Buy Strike",  desc: "Lower OTM put — buy as downside hedge." },
+      { name: "K1 Put Premium",     desc: "Premium paid for K1 put." },
+      { name: "K2 Put Sell Strike", desc: "Upper OTM put — sell to collect credit." },
+      { name: "K2 Put Premium",     desc: "Premium received for K2 put." },
+      { name: "K3 Call Sell Strike", desc: "Lower OTM call — sell to collect credit." },
+      { name: "K3 Call Premium",    desc: "Premium received for K3 call." },
+      { name: "K4 Call Buy Strike", desc: "Upper OTM call — buy as upside hedge." },
+      { name: "K4 Call Premium",    desc: "Premium paid for K4 call." },
+    ],
+  },
 };
 
 // ─── Right-hand info panel ────────────────────────────────────────
@@ -424,8 +511,12 @@ function InfoPanel({ calcId, direction, onDirectionChange }) {
 
 // ─── Main Calculator shell ────────────────────────────────────────
 export default function Calculator() {
-  const [selected, setSelected]   = useState("position");
-  const [direction, setDirection] = useState("long");
+  const [searchParams] = useSearchParams();
+  const initCalc = searchParams.get("calc") ?? "position";
+  const [selected, setSelected]   = useState(initCalc);
+  const [direction, setDirection] = useState(
+    () => { const m = CALC_META[initCalc]; return m?.direction === "short" ? "short" : "long"; }
+  );
   const entry         = CALCULATORS.find((c) => c.id === selected);
   const CalcComponent = entry.component;
   const isComparator  = !!entry.isComparator;
@@ -449,10 +540,10 @@ export default function Calculator() {
       </div>
 
       {isComparator ? (
-        <CalcComponent key={selected} />
+        <SimSpotProvider key={selected}><CalcComponent key={selected} /></SimSpotProvider>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 28, alignItems: "start" }}>
-          <CalcComponent key={selected} direction={direction} />
+          <SimSpotProvider key={selected}><CalcComponent key={selected} direction={direction} /></SimSpotProvider>
           <InfoPanel calcId={selected} direction={direction} onDirectionChange={setDirection} />
         </div>
       )}

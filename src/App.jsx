@@ -27,6 +27,7 @@ import StatsView from "./components/StatsView";
 import Calculator from "./components/Calculator";
 import ChecklistLibrary from "./components/ChecklistLibrary";
 import Login from "./components/Login";
+import OptionStrategies from "./components/OptionStrategies";
 
 const NAV_ITEMS = [
   { id: "strategies", label: "Strategies", path: "/tradedesk/strategies" },
@@ -34,6 +35,7 @@ const NAV_ITEMS = [
   { id: "journal", label: "Journal", path: "/tradedesk/journal" },
   { id: "stats", label: "Stats", path: "/tradedesk/stats" },
   { id: "calculator", label: "Calculator", path: "/tradedesk/calculator" },
+  { id: "playbook", label: "Playbook", path: "/tradedesk/playbook" },
 ];
 
 const PAGE_TITLES = {
@@ -42,6 +44,7 @@ const PAGE_TITLES = {
   journal: "Trading Journal",
   stats: "Statistics",
   calculator: "Calculator",
+  playbook: "Strategy Playbook",
 };
 
 const REQUIRED_COLS = [
@@ -178,6 +181,13 @@ function Icon({ name, size = 18, color = "currentColor", strokeWidth = 2 }) {
           <line x1="14" y1="14" x2="16" y2="14" />
           <line x1="8" y1="18" x2="10" y2="18" />
           <line x1="14" y1="18" x2="16" y2="18" />
+        </svg>
+      );
+    case "playbook":
+      return (
+        <svg {...s} viewBox="0 0 24 24" {...p}>
+          <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+          <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
         </svg>
       );
     case "checklist":
@@ -525,6 +535,7 @@ export default function App() {
     journal: "journal",
     stats: "stats",
     calculator: "calculator",
+    playbook: "playbook",
   };
 
   return (
@@ -1039,6 +1050,7 @@ export default function App() {
               element={<StatsView trades={trades} strats={strats} />}
             />
             <Route path="/tradedesk/calculator" element={<Calculator />} />
+            <Route path="/tradedesk/playbook" element={<OptionStrategies />} />
             <Route
               path="*"
               element={<Navigate to="/tradedesk/strategies" replace />}

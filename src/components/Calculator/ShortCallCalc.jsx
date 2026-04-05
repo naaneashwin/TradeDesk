@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CARD, SEC_TITLE, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, fmtINR } from "./shared";
+import { CARD, SEC_TITLE, Field, StatCard, PayoffChart, PLSimulator, DissectPanel, TradeExpectation, ZONE, fmtINR } from "./shared";
 
 export default function ShortCallCalc() {
   const [form, setForm] = useState({ strike: "", premium: "", lots: "1", lotSize: "1" });
@@ -40,12 +40,26 @@ export default function ShortCallCalc() {
             <StatCard label="Max Loss"         val="Unlimited"           sub="Stock rises above breakeven: no cap"      col="var(--red)" />
           </div>
           <div style={CARD}><p style={{ fontSize: 11, color: "var(--text-3)", margin: 0 }}>Profit zone: stock ≤ {fmtINR(breakeven)} at expiry · Loss grows with every rupee above breakeven</p></div>
+          <TradeExpectation
+            zones={[
+              ZONE.profit("MAX PROFIT", `Below ${fmtINR(strike)}`, "Keep full credit", 2),
+              ZONE.eroding("ERODING", `${fmtINR(strike)} → ${fmtINR(breakeven)}`, "Profit shrinks"),
+              ZONE.loss("LOSS ↑", `Above ${fmtINR(breakeven)}`, "Unlimited risk", 2),
+            ]}
+            ideal={`Price stays at or below ${fmtINR(strike)} at expiry. Pocket the full ${fmtINR(premium)}/unit in credit.`}
+            exitRule={`Buy back the call (close position) if price approaches ${fmtINR(breakeven)} — never let a short call expire deep in-the-money.`}
+          />
           <DissectPanel steps={[
             { label: "Breakeven", formula: `strike + premiumReceived = ${fmtINR(strike)} + ${fmtINR(premium)}`, result: fmtINR(breakeven), resultCol: "var(--red)", note: "Stock must stay at or below this level for the trade to remain profitable." },
             { label: "Total Credit Received", formula: `premium × lots × lotSize = ${fmtINR(premium)} × ${lots} × ${lotSize}`, result: fmtINR(totalCredit), resultCol: "var(--green)" },
             { label: "Max Profit", formula: `= Total Credit Received (stock ≤ strike at expiry)`, result: fmtINR(totalCredit), resultCol: "var(--green)" },
             { label: "Max Loss", formula: "Unlimited — loss = (spot − breakeven) × qty for every rupee above BE", result: "∞", resultCol: "var(--red)" },
-          ]} />
+          ]}
+          legs={valid ? [
+            { label: "Call Option", action: "Sell", qty: 1, type: "Call", strike, premium, desc: "You receive the premium upfront and are obligated to sell shares at the strike price if assigned. Profit is capped at the premium collected. Loss is theoretically unlimited if price rises sharply above the breakeven." },
+          ] : []}
+          lotQty={lots * lotSize}
+          />
           <PayoffChart pnlFn={(spot) => premium - Math.max(0, spot - strike)} center={breakeven} breakevens={[breakeven]} title="Short Call — Payoff at Expiry" />
           <PLSimulator pnlFn={(spot) => premium - Math.max(0, spot - strike)} qty={lots * lotSize} breakevens={[breakeven]} isShort legFns={[(spot) => premium - Math.max(0, spot - strike)]} legLabels={["Short Call"]} />
         </>
