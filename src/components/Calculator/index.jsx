@@ -24,6 +24,7 @@ import ShortIronCondorCalc        from "./ShortIronCondorCalc";
 import StraddleStrangleComparator from "./StraddleStrangleComparator";
 import BullCallRatioCalc          from "./BullCallRatioCalc";
 import CandleStrengthCalc        from "./CandleStrengthCalc";
+import ClimacticCandleCalc       from "./ClimacticCandleCalc";
 
 // ─── Calculator registry ──────────────────────────────────────────
 const CALCULATORS = [
@@ -50,6 +51,7 @@ const CALCULATORS = [
   { id: "short-iron-condor",      label: "Short Iron Condor",       component: ShortIronCondorCalc },
   { id: "bull-call-ratio",         label: "Bull Call Ratio Spread",  component: BullCallRatioCalc },
   { id: "candle-strength",         label: "🕯 Candle Strength",         component: CandleStrengthCalc },
+  { id: "climactic-candle",        label: "🌋 Climactic Candle",         component: ClimacticCandleCalc },
 ];
 
 // ─── Per-calculator metadata — also exported for the Strategy Playbook ───
@@ -85,6 +87,25 @@ export const CALC_META = {
       { name: "High",  desc: "The highest price reached during the candle." },
       { name: "Low",   desc: "The lowest price reached during the candle." },
       { name: "Close", desc: "The price at which the candle closed. This is the most important value — it reflects the final verdict of all participants for that session." },
+    ],
+  },
+  "climactic-candle": {
+    direction: "neutral",
+    outlook: "All Setups",
+    whenToUse: "After a large candle prints on the chart. Tells you whether the candle represents a sustainable move or buyer/seller exhaustion that makes entering dangerous.",
+    risk: "N/A — pre-trade filtering tool.",
+    reward: "N/A — helps you avoid chasing climactic candles and size down appropriately on extended ones.",
+    summary: "Measures candle exhaustion using ATR multiple and body % of price, with a volume override. Large candles that span 4× ATR or move the price by 7%+ in a single session almost always precede a pullback — all committed participants are already in.",
+    howItWorks: "Three sequential rules: (1) Volume check first — 4× or more is a hard skip regardless of candle size. (2) ATR multiple — how many times the normal daily range this candle covers. (3) Body % of price — how large the body is relative to the stock price, independent of ATR. The worse of Rules 2 and 3 determines the tier. A volume caution (3×–4×) drops the final tier one level further.",
+    formula: "ATR Multiple    = (High − Low) / ATR(14)\nBody % of Price = |Close − Open| / Open × 100\nVolume Multiple = Today's Volume / 20-bar Avg Volume\n\nTiers:\n  Normal     → ATR < 2× AND body < 3% of price → 100% size\n  Extended   → ATR 2×–3× OR body 3%–5%         → 75% size\n  Exhaustion → ATR 3×–4× OR body 5%–7%         → 50% size\n  Climactic  → ATR > 4× OR body > 7%            → 0% (skip)\n  Volume ≥ 4× → override to Climactic immediately\n  Volume 3×–4× → downgrade final tier one step",
+    fields: [
+      { name: "Open",             desc: "Candle open price." },
+      { name: "High",             desc: "Candle high price." },
+      { name: "Low",              desc: "Candle low price." },
+      { name: "Close",            desc: "Candle close price." },
+      { name: "ATR(14)",          desc: "14-period Average True Range — the benchmark for what a 'normal' day's move looks like for this instrument." },
+      { name: "Today's Volume",   desc: "Optional. The total volume traded in this candle's session." },
+      { name: "20-bar Avg Volume", desc: "Optional. The 20-session average volume baseline. Required to compute the volume multiple." },
     ],
   },
   "call-breakeven": {

@@ -506,6 +506,43 @@ export default function Checklist({ strategy, trades = [], onLogTrade, onBack })
   const wins_count   = st_trades.filter(t => t.outcome === 'win').length
   const wr_display   = trades_count ? `${Math.round(wins_count / trades_count * 100)}%` : '—'
 
+  // Profit Factor
+  const pnls_all   = st_trades.map(t => Number(t.pnl) || 0)
+  const grossWin_s  = pnls_all.filter(p => p > 0).reduce((a, b) => a + b, 0)
+  const grossLoss_s = Math.abs(pnls_all.filter(p => p < 0).reduce((a, b) => a + b, 0))
+  const pf_display  = trades_count
+    ? (grossLoss_s > 0 ? (grossWin_s / grossLoss_s).toFixed(2) : grossWin_s > 0 ? '∞' : '—')
+    : '—'
+
+  // Max Drawdown — monthly equity curve (same formula as BacktestingTab)
+  const byMonth_s = {}
+  st_trades.forEach(t => {
+    const d = new Date(t.date)
+    const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2,'0')}`
+    byMonth_s[key] = (byMonth_s[key] ?? 0) + (Number(t.pnl) || 0)
+  })
+  let eq_s = 0, peak_s = 0, maxDD_pct = 0
+  Object.keys(byMonth_s).sort().forEach(key => {
+    eq_s += byMonth_s[key]
+    if (eq_s > peak_s) peak_s = eq_s
+    const dd = peak_s > 0 ? (eq_s - peak_s) / peak_s * 100 : 0
+    if (dd < maxDD_pct) maxDD_pct = dd
+  })
+  const dd_display = trades_count && maxDD_pct < 0
+    ? `${maxDD_pct.toFixed(1)}%`
+    : '—'
+
+  // Avg Duration — entry date → latest exit date, averaged across closed trades
+  const durations_s = st_trades.map(t => {
+    const exits = t.exits ?? []
+    if (!exits.length) return null
+    const latestExit = exits.reduce((a, b) => new Date(a.exitDate) > new Date(b.exitDate) ? a : b)
+    const days = Math.round((new Date(latestExit.exitDate) - new Date(t.date)) / 86400000)
+    return days >= 0 ? days : null
+  }).filter(d => d !== null)
+  const avgDur_s    = durations_s.length ? Math.round(durations_s.reduce((a, b) => a + b, 0) / durations_s.length) : null
+  const dur_display = avgDur_s !== null ? (avgDur_s === 0 ? '<1d' : `${avgDur_s}d`) : '—'
+
   const [chk, setChk]           = useState({})
   const [exp, setExp]           = useState({})
   const [entry, setEntry]       = useState('')
@@ -590,13 +627,17 @@ export default function Checklist({ strategy, trades = [], onLogTrade, onBack })
       </div>
 
       {/* Stat cards grid */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', margin: 0 }}>All-time statistics</p>
+        <p style={{ fontSize: 11, color: 'var(--text-3)', margin: 0 }}>Across all logged trades · use Backtesting tab for date-filtered analysis</p>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
         <ChecklistStatCard iconKey="variants" label="Variants" value={strategy.variants?.length ?? 0}/>
         <ChecklistStatCard iconKey="trades"   label="Trades"   value={trades_count}/>
         <ChecklistStatCard iconKey="winrate"  label="Win Rate" value={wr_display}/>
-        <ChecklistStatCard iconKey="duration" label="Avg Duration" value="—"/>
-        <ChecklistStatCard iconKey="profit"   label="Profit Factor" value="—"/>
-        <ChecklistStatCard iconKey="drawdown" label="Max Drawdown" value="—"/>
+        <ChecklistStatCard iconKey="duration" label="Avg Duration" value={dur_display}/>
+        <ChecklistStatCard iconKey="profit"   label="Profit Factor" value={pf_display}/>
+        <ChecklistStatCard iconKey="drawdown" label="Max Drawdown" value={dd_display}/>
       </div>
 
       {/* Tabs */}
