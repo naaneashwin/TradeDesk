@@ -43,9 +43,10 @@ export async function getTrades() {
 }
 
 export async function insertTrade(trade) {
+  const { data: { user } } = await supabase.auth.getUser()
   const { error } = await supabase
     .from('trades')
-    .insert(tradeToRow(trade))
+    .insert({ ...tradeToRow(trade), user_id: user.id })
 
   if (error) throw error
 }
@@ -113,6 +114,7 @@ function rowToTrade(row) {
     outcome:        row.outcome,
     pnl:            Number(row.pnl),
     notes:          row.notes,
+    exits:          row.exits ?? [],
   }
 }
 
@@ -131,6 +133,7 @@ function tradeToRow(t) {
     outcome:         t.outcome,
     pnl:             t.pnl,
     notes:           t.notes,
+    exits:           t.exits ?? [],
   }
 }
 

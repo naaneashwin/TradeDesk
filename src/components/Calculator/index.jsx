@@ -23,6 +23,7 @@ import LongIronCondorCalc         from "./LongIronCondorCalc";
 import ShortIronCondorCalc        from "./ShortIronCondorCalc";
 import StraddleStrangleComparator from "./StraddleStrangleComparator";
 import BullCallRatioCalc          from "./BullCallRatioCalc";
+import CandleStrengthCalc        from "./CandleStrengthCalc";
 
 // ─── Calculator registry ──────────────────────────────────────────
 const CALCULATORS = [
@@ -48,6 +49,7 @@ const CALCULATORS = [
   { id: "long-iron-condor",       label: "Long Iron Condor",        component: LongIronCondorCalc },
   { id: "short-iron-condor",      label: "Short Iron Condor",       component: ShortIronCondorCalc },
   { id: "bull-call-ratio",         label: "Bull Call Ratio Spread",  component: BullCallRatioCalc },
+  { id: "candle-strength",         label: "🕯 Candle Strength",         component: CandleStrengthCalc },
 ];
 
 // ─── Per-calculator metadata — also exported for the Strategy Playbook ───
@@ -67,6 +69,22 @@ export const CALC_META = {
       { name: "Risk Per Trade %",        desc: "The % of your total portfolio you can tolerate losing if stop-loss is hit. Typically 0.5–2%." },
       { name: "Entry Price",             desc: "The price at which you plan to enter the position." },
       { name: "Stop Loss Price",         desc: "Your hard exit price if the trade moves against you. Below entry for Long, above entry for Short." },
+    ],
+  },
+  "candle-strength": {
+    direction: "neutral",
+    outlook: "All Setups",
+    whenToUse: "Before entering, while managing, or considering an exit. Select the context that matches your current trade situation — each context uses a different set of rules calibrated for that decision.",
+    risk: "N/A — this is a pre-trade and trade-management validation tool, not a P&L calculator.",
+    reward: "N/A — helps improve entry quality, protect profits, and avoid holding through distribution.",
+    summary: "A 4-context candle quality system. Context A (Breakout Entry) and B (Pullback Entry) score entry candles and suggest position size. Context C (Trail Stop) tells you whether to trail your SL under the candle or hold. Context D (Exit Warning) counts distribution signals and tells you to hold, partially exit, or exit fully.",
+    howItWorks: "Each context runs 5 sequential rules (or 5 warning checks for Context D) that evaluate direction, body %, close position, and wick quality — each calibrated for the specific market scenario. Rules generate PASS, CONDITIONAL, or FAIL outcomes. The verdict aggregates them into a clear action.",
+    formula: "Shared metrics:\nbodyPct          = |C − O| / (H − L) × 100\nclosePositionPct = (C − L) / (H − L) × 100\nupperWickRatio   = (H − max(O,C)) / |C − O|\nlowerWickRatio   = (min(O,C) − L) / |C − O|\n\nContext A thresholds: body ≥60 PASS, 55–59 COND; close ≥60 PASS, 50–59 COND; uWick ≤0.5 PASS, ≤1 COND\nContext B thresholds: body ≥40 PASS, 25–39 COND; lWick ≥1.5 PASS, ≥1 COND (key rule)\nContext C thresholds: body ≥60 PASS, ≥50 COND — any FAIL returns HOLD immediately\nContext D: counts 5 warning signals; 0–1 = hold, 2 = exit 50%, 3+ = exit full",
+    fields: [
+      { name: "Open",  desc: "The price at which the candle opened." },
+      { name: "High",  desc: "The highest price reached during the candle." },
+      { name: "Low",   desc: "The lowest price reached during the candle." },
+      { name: "Close", desc: "The price at which the candle closed. This is the most important value — it reflects the final verdict of all participants for that session." },
     ],
   },
   "call-breakeven": {
@@ -511,12 +529,18 @@ function InfoPanel({ calcId, direction, onDirectionChange }) {
 
 // ─── Main Calculator shell ────────────────────────────────────────
 export default function Calculator() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const initCalc = searchParams.get("calc") ?? "position";
-  const [selected, setSelected]   = useState(initCalc);
-  const [direction, setDirection] = useState(
-    () => { const m = CALC_META[initCalc]; return m?.direction === "short" ? "short" : "long"; }
-  );
+  const initDir  = searchParams.get("dir")  ?? null;
+  const [selected, setSelected]   = useState(() => {
+    const id = CALCULATORS.find((c) => c.id === initCalc) ? initCalc : "position";
+    return id;
+  });
+  const [direction, setDirection] = useState(() => {
+    if (initDir === "short" || initDir === "long") return initDir;
+    const m = CALC_META[initCalc];
+    return m?.direction === "short" ? "short" : "long";
+  });
   const [resetKey, setResetKey] = useState(0);
 
   const entry         = CALCULATORS.find((c) => c.id === selected);
@@ -527,8 +551,14 @@ export default function Calculator() {
     setSelected(id);
     setResetKey(0);
     const meta = CALC_META[id];
-    if (meta && meta.direction !== "selectable")
-      setDirection(meta.direction === "short" ? "short" : "long");
+    const newDir = meta?.direction === "short" ? "short" : "long";
+    if (meta && meta.direction !== "selectable") setDirection(newDir);
+    setSearchParams({ calc: id, ...(meta?.direction !== "selectable" ? { dir: newDir } : {}) }, { replace: true });
+  };
+
+  const handleDirectionChange = (dir) => {
+    setDirection(dir);
+    setSearchParams({ calc: selected, dir }, { replace: true });
   };
 
   const handleReset = () => setResetKey((k) => k + 1);
@@ -559,7 +589,7 @@ export default function Calculator() {
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 28, alignItems: "start" }}>
           <SimSpotProvider key={`${selected}-${resetKey}`}><CalcComponent key={`${selected}-${resetKey}`} direction={direction} /></SimSpotProvider>
-          <InfoPanel calcId={selected} direction={direction} onDirectionChange={setDirection} />
+          <InfoPanel calcId={selected} direction={direction} onDirectionChange={handleDirectionChange} />
         </div>
       )}
     </div>

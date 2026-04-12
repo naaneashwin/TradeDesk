@@ -30,15 +30,29 @@ const statusPill = outcome => {
 const COLS = [
   { key: 'date',        label: 'DATE',     sortable: true  },
   { key: 'instrument',  label: 'ASSET',    sortable: true  },
-  { key: 'strategy',    label: 'STRATEGY', sortable: false },
+  { key: 'strategy',    label: 'STRAT',    sortable: false },
   { key: 'direction',   label: 'TYPE',     sortable: false },
   { key: 'entryPrice',  label: 'ENTRY',    sortable: true, right: true },
   { key: 'exitPrice',   label: 'EXIT',     sortable: true, right: true },
+  { key: 'days',        label: 'DAYS',     sortable: false, right: true },
   { key: 'pnl',         label: 'PNL',      sortable: true, right: true },
   { key: 'rMult',       label: 'R-MULT',   sortable: true, right: true },
   { key: 'outcome',     label: 'STATUS',   sortable: false },
   { key: '_del',        label: '',         sortable: false },
 ]
+
+function daysHeld(trade) {
+  const entry = new Date(trade.date)
+  const lastExitDate = trade.exits?.length
+    ? trade.exits.reduce((latest, e) => {
+        const d = new Date(e.exitDate || trade.date)
+        return d > latest ? d : latest
+      }, new Date(0))
+    : null
+  if (!lastExitDate || lastExitDate.getFullYear() < 2000) return null
+  const diff = Math.round((lastExitDate - entry) / 86400000)
+  return diff
+}
 
 // ── Filter panel ─────────────────────────────────────────────
 function FilterPanel({ strats, filters, setFilters, onClose }) {
@@ -142,13 +156,16 @@ function DatePanel({ dateRange, setDateRange, onClose }) {
 }
 
 // ── Main component ────────────────────────────────────────────
-export default function Journal({ trades, strats, onDelete, onLogTrade }) {
+export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTrade }) {
   const [search,    setSearch]    = useState('')
   const [filters,   setFilters]   = useState({ outcome: 'all', direction: 'all', strategyId: 'all' })
   const [dateRange, setDateRange] = useState({ from: '', to: '' })
   const [sort,      setSort]      = useState({ key: 'date', dir: 'desc' })
   const [toDelete,  setToDelete]  = useState(null)
+  const [editTrade, setEditTrade] = useState(null)
   const [logModal,  setLogModal]  = useState(false)
+  const [expanded,  setExpanded]  = useState(new Set())
+  const toggleExpand = id => setExpanded(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
   const [showFilter, setShowFilter] = useState(false)
   const [showDate,   setShowDate]   = useState(false)
 
@@ -262,23 +279,60 @@ export default function Journal({ trades, strats, onDelete, onLogTrade }) {
             </thead>
             <tbody>
               {processed.map((t, i) => {
-                const pnlPct   = t.entryPrice && t.exitPrice ? ((t.exitPrice - t.entryPrice) / t.entryPrice * (t.direction === 'short' ? -1 : 1) * 100) : null
-                const barW     = Math.min(Math.abs(t.pnl || 0) / maxPnl * 100, 100)
-                const pnlColor = t.pnl > 0 ? 'var(--green)' : t.pnl < 0 ? 'var(--red)' : 'var(--text-2)'
+                const pnlPct    = t.entryPrice && t.exitPrice ? ((t.exitPrice - t.entryPrice) / t.entryPrice * (t.direction === 'short' ? -1 : 1) * 100) : null
+                const barW      = Math.min(Math.abs(t.pnl || 0) / maxPnl * 100, 100)
+                const pnlColor  = t.pnl > 0 ? 'var(--green)' : t.pnl < 0 ? 'var(--red)' : 'var(--text-2)'
+                const days      = daysHeld(t)
+                const multiExit = t.exits?.length > 1
+                const isExpanded = expanded.has(t.id)
+                const isLast    = i === processed.length - 1
                 return (
-                  <tr key={t.id} style={{ borderBottom: i < processed.length - 1 ? '1px solid var(--border)' : 'none', transition: 'background 0.1s' }}
+                  <>
+                  <tr key={t.id} style={{ borderBottom: (!isLast || (multiExit && isExpanded)) ? '1px solid var(--border)' : 'none', transition: 'background 0.1s' }}
                     onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-2)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                     <td style={{ padding: '16px 16px', fontSize: 13, color: 'var(--text-2)', whiteSpace: 'nowrap' }}>{t.date}</td>
                     <td style={{ padding: '16px 16px', fontWeight: 700, color: 'var(--text)', fontSize: 14 }}>{t.instrument}</td>
-                    <td style={{ padding: '16px 16px' }}>
-                      <span style={{ fontSize: 12, padding: '4px 10px', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-2)', whiteSpace: 'nowrap' }}>
-                        {sm[t.strategyId]?.name ?? '—'}
-                      </span>
+                    <td style={{ padding: '16px 16px', maxWidth: 110 }}>
+                      {(() => {
+                        const name = sm[t.strategyId]?.name ?? '—'
+                        const short = name.length > 12 ? name.slice(0, 11) + '…' : name
+                        return (
+                          <span title={name} style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 6, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-3)', whiteSpace: 'nowrap', display: 'inline-block', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {short}
+                          </span>
+                        )
+                      })()}
                     </td>
                     <td style={{ padding: '16px 16px' }}>{typePill(t.direction)}</td>
                     <td style={{ padding: '16px 16px', fontSize: 13, textAlign: 'right', color: 'var(--text)' }}>{t.entryPrice?.toFixed(2)}</td>
-                    <td style={{ padding: '16px 16px', fontSize: 13, textAlign: 'right', color: 'var(--text)' }}>{t.exitPrice ? t.exitPrice.toFixed(2) : '—'}</td>
+                    <td style={{ padding: '16px 16px', fontSize: 13, textAlign: 'right', color: 'var(--text)' }}>
+                      {t.exitPrice ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+                          <span>{t.exitPrice.toFixed(2)}</span>
+                          {multiExit && (
+                            <button onClick={() => toggleExpand(t.id)} style={{
+                              display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 600,
+                              padding: '2px 7px', borderRadius: 10, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                              background: isExpanded ? 'rgba(45,122,95,0.1)' : 'var(--surface-2)',
+                              color: isExpanded ? 'var(--green)' : 'var(--text-3)',
+                              border: `1px solid ${isExpanded ? 'rgba(45,122,95,0.3)' : 'var(--border)'}`,
+                            }}>
+                              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'none' }}>
+                                <polyline points="6 9 12 15 18 9"/>
+                              </svg>
+                              {t.exits.length} exits
+                            </button>
+                          )}
+                        </div>
+                      ) : '—'}
+                    </td>
+                    <td style={{ padding: '16px 16px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {days === null
+                        ? <span style={{ fontSize: 12, color: 'var(--text-3)' }}>open</span>
+                        : <span style={{ fontSize: 13, fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-2)' }}>{days}d</span>
+                      }
+                    </td>
                     <td style={{ padding: '16px 16px', textAlign: 'right' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
@@ -295,16 +349,61 @@ export default function Journal({ trades, strats, onDelete, onLogTrade }) {
                     </td>
                     <td style={{ padding: '16px 16px' }}>{statusPill(t.outcome)}</td>
                     <td style={{ padding: '16px 16px' }}>
-                      {toDelete === t.id ? (
-                        <span style={{ display: 'flex', gap: 6 }}>
-                          <button style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, background: 'var(--red)', color: '#fff', border: 'none', cursor: 'pointer' }} onClick={() => { onDelete(t.id); setToDelete(null) }}>Del</button>
-                          <button className="btn-outline" style={{ fontSize: 11, padding: '4px 8px', borderRadius: 6 }} onClick={() => setToDelete(null)}>✕</button>
-                        </span>
-                      ) : (
-                        <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--text-3)', lineHeight: 1 }} onClick={() => setToDelete(t.id)}>×</button>
-                      )}
+                      <div style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'flex-end' }}>
+                        {/* Edit */}
+                        <button title="Edit" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: '2px 4px', lineHeight: 1, borderRadius: 4 }}
+                          onClick={() => setEditTrade(t)}
+                          onMouseEnter={e => e.currentTarget.style.color = 'var(--text)'}
+                          onMouseLeave={e => e.currentTarget.style.color = 'var(--text-3)'}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                          </svg>
+                        </button>
+                        {/* Delete */}
+                        {toDelete === t.id ? (
+                          <span style={{ display: 'flex', gap: 6 }}>
+                            <button style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, background: 'var(--red)', color: '#fff', border: 'none', cursor: 'pointer' }} onClick={() => { onDelete(t.id); setToDelete(null) }}>Del</button>
+                            <button className="btn-outline" style={{ fontSize: 11, padding: '4px 8px', borderRadius: 6 }} onClick={() => setToDelete(null)}>✕</button>
+                          </span>
+                        ) : (
+                          <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--text-3)', lineHeight: 1 }} onClick={() => setToDelete(t.id)}>×</button>
+                        )}
+                      </div>
                     </td>
                   </tr>
+                  {multiExit && isExpanded && (
+                    <tr key={`${t.id}-exits`} style={{ borderBottom: !isLast ? '1px solid var(--border)' : 'none' }}>
+                      <td colSpan={COLS.length} style={{ padding: '0 16px 14px 16px', background: 'var(--surface-2)' }}>
+                        <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                            <thead>
+                              <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
+                                {['#', 'Exit Date', 'Qty', 'Exit Price', 'P&L'].map(h => (
+                                  <th key={h} style={{ padding: '8px 14px', textAlign: h === '#' ? 'center' : h === 'P&L' || h === 'Exit Price' || h === 'Qty' ? 'right' : 'left', fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {t.exits.map((e, ei) => {
+                                const epnlColor = e.pnl > 0 ? 'var(--green)' : e.pnl < 0 ? 'var(--red)' : 'var(--text-2)'
+                                return (
+                                  <tr key={e.id} style={{ borderBottom: ei < t.exits.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                                    <td style={{ padding: '9px 14px', textAlign: 'center', color: 'var(--text-3)', fontSize: 11 }}>{ei + 1}</td>
+                                    <td style={{ padding: '9px 14px', color: 'var(--text-2)', whiteSpace: 'nowrap' }}>{e.exitDate ?? '—'}</td>
+                                    <td style={{ padding: '9px 14px', textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text)' }}>{e.qty}</td>
+                                    <td style={{ padding: '9px 14px', textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text)' }}>{e.exitPrice?.toFixed(2)}</td>
+                                    <td style={{ padding: '9px 14px', textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, color: epnlColor }}>{e.pnl >= 0 ? '+' : ''}₹{e.pnl?.toFixed(2)}</td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </>
                 )
               })}
             </tbody>
@@ -315,6 +414,21 @@ export default function Journal({ trades, strats, onDelete, onLogTrade }) {
       {logModal && strats.length > 0 && (
         <LogModal strategy={strats[0]} onSave={trade => { onLogTrade(trade); setLogModal(false) }} onClose={() => setLogModal(false)} variant={null} score={{ done: 0, total: 0 }}/>
       )}
+
+      {editTrade && (() => {
+        const st = sm[editTrade.strategyId] ?? strats[0]
+        if (!st) return null
+        return (
+          <LogModal
+            strategy={st}
+            trade={editTrade}
+            onUpdate={trade => { onEditTrade(trade); setEditTrade(null) }}
+            onClose={() => setEditTrade(null)}
+            variant={editTrade.variant}
+            score={editTrade.checklistScore ?? { done: 0, total: 0 }}
+          />
+        )
+      })()}
     </div>
   )
 }

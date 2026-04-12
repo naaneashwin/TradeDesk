@@ -4,6 +4,11 @@ import { BrowserRouter, useLocation } from 'react-router-dom'
 import App from './App'
 import './index.css'
 
+// Prevent number inputs from changing value on scroll globally
+document.addEventListener('wheel', () => {
+  if (document.activeElement?.type === 'number') document.activeElement.blur()
+}, { passive: true })
+
 function ScrollToTop() {
   const { pathname } = useLocation();
   useEffect(() => { window.scrollTo(0, 0); }, [pathname]);

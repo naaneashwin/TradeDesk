@@ -51,7 +51,7 @@ function EquityCurve({ trades }) {
         return (
           <g key={i}>
             <line x1={PAD.left} y1={y} x2={W - PAD.right} y2={y} stroke="#e5e7eb" strokeWidth="1" strokeDasharray="4 4"/>
-            <text x={PAD.left - 6} y={y + 4} textAnchor="end" fontSize="11" fill="#9ca3af">${Math.round(v)}</text>
+            <text x={PAD.left - 6} y={y + 4} textAnchor="end" fontSize="11" fill="#9ca3af">₹{Math.round(v)}</text>
           </g>
         )
       })}
@@ -117,38 +117,65 @@ function PnlByStrategy({ trades, strats }) {
 
   if (!data.length) return <p style={{ color: 'var(--text-3)', fontSize: 13 }}>No data.</p>
 
-  const maxAbs = Math.max(...data.map(d => Math.abs(d.pnl)))
-  const W = 400, BAR_H = 28, GAP = 20, LABEL_W = 100, PAD_R = 20
-  const chartW = W - LABEL_W - PAD_R
-  const zeroX  = LABEL_W + (chartW / 2)
+  const maxAbs  = Math.max(...data.map(d => Math.abs(d.pnl)))
+  const BAR_H   = 28
+  const GAP     = 16
+  const LABEL_W = 120   // left label column
+  const PAD_R   = 8     // right padding inside chart area
+  const VAL_W   = 72    // right value label column
+  const W       = 480
+  const chartW  = W - LABEL_W - PAD_R - VAL_W
+  const zeroX   = LABEL_W + chartW / 2
+  const H       = data.length * (BAR_H + GAP) + 32
 
-  // X axis ticks
-  const tickVals = [-maxAbs, -maxAbs / 2, 0, maxAbs / 2, maxAbs]
+  const fmt = v => {
+    const abs = Math.abs(v)
+    if (abs >= 100000) return `${(v / 100000).toFixed(1)}L`
+    if (abs >= 1000)   return `${(v / 1000).toFixed(1)}k`
+    return String(Math.round(v))
+  }
 
-  const H = data.length * (BAR_H + GAP) + 40
+  // Only show 3 tick labels: left, center (0), right — avoids edge overflow
+  const ticks = [-maxAbs, 0, maxAbs]
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', overflow: 'visible' }}>
-      {/* Grid lines + x labels */}
-      {tickVals.map((v, i) => {
+      {/* Grid lines + bottom tick labels */}
+      {ticks.map((v, i) => {
         const x = LABEL_W + ((v + maxAbs) / (2 * maxAbs)) * chartW
         return (
           <g key={i}>
-            <line x1={x} y1={0} x2={x} y2={H - 24} stroke="#e5e7eb" strokeWidth="1" strokeDasharray="4 4"/>
-            <text x={x} y={H - 8} textAnchor="middle" fontSize="11" fill="#9ca3af">
-              ${Math.round(v / 1000) !== 0 ? `${Math.round(v / 1000)}k` : '0'}
+            <line x1={x} y1={0} x2={x} y2={H - 20} stroke="#e5e7eb" strokeWidth="1" strokeDasharray="4 3"/>
+            <text x={x} y={H - 4} textAnchor="middle" fontSize="10" fill="#9ca3af">
+              {v === 0 ? '0' : `₹${fmt(v)}`}
             </text>
           </g>
         )
       })}
+
       {data.map((d, i) => {
-        const y = i * (BAR_H + GAP) + 10
-        const barW = (Math.abs(d.pnl) / maxAbs) * (chartW / 2)
-        const x = d.pnl >= 0 ? zeroX : zeroX - barW
+        const y    = i * (BAR_H + GAP) + 6
+        const barW = Math.max((Math.abs(d.pnl) / maxAbs) * (chartW / 2), 2)
+        const x    = d.pnl >= 0 ? zeroX : zeroX - barW
+        const isPos = d.pnl >= 0
+        // Truncate strategy name if too long
+        const label = d.name.length > 14 ? d.name.slice(0, 13) + '…' : d.name
+
         return (
           <g key={d.name}>
-            <text x={LABEL_W - 8} y={y + BAR_H / 2 + 4} textAnchor="end" fontSize="12" fill="#6b7280">{d.name}</text>
-            <rect x={x} y={y} width={barW} height={BAR_H} rx="4" fill={d.pnl >= 0 ? 'var(--green)' : '#ef4444'}/>
+            {/* Strategy name */}
+            <text x={LABEL_W - 8} y={y + BAR_H / 2 + 4} textAnchor="end" fontSize="11" fill="#6b7280">{label}</text>
+            {/* Bar */}
+            <rect x={x} y={y} width={barW} height={BAR_H} rx="4" fill={isPos ? 'var(--green)' : '#ef4444'} opacity="0.85"/>
+            {/* Value label to the right of the bar area */}
+            <text
+              x={LABEL_W + chartW + PAD_R + 4}
+              y={y + BAR_H / 2 + 4}
+              textAnchor="start" fontSize="11" fontWeight="600"
+              fill={isPos ? '#2d7a5f' : '#dc2626'}
+            >
+              {isPos ? '+' : '-'}₹{fmt(Math.abs(d.pnl))}
+            </text>
           </g>
         )
       })}
@@ -180,7 +207,7 @@ export default function StatsView({ trades, strats }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Summary cards */}
       <div style={{ display: 'flex', gap: 16 }}>
-        <SummaryCard label="Total PnL"     value={`${totalPnl >= 0 ? '+' : ''}$${fmt(totalPnl)}`} accent={pnlColor}/>
+        <SummaryCard label="Total PnL"     value={`${totalPnl >= 0 ? '+' : ''}₹${fmt(totalPnl)}`} accent={pnlColor}/>
         <SummaryCard label="Win Rate"      value={`${wr}%`}/>
         <SummaryCard label="Profit Factor" value={pf}/>
         <SummaryCard label="Total Trades"  value={trades.length}/>
@@ -208,11 +235,11 @@ export default function StatsView({ trades, strats }) {
           <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', margin: '0 0 20px' }}>Advanced Metrics</h3>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {[
-              { label: 'Average Win',  value: `$${fmt(avgWin)}`,       color: 'var(--green)' },
-              { label: 'Average Loss', value: `-$${fmt(avgLoss)}`,     color: 'var(--red)'   },
-              { label: 'Largest Win',  value: `$${fmt(largestW)}`,     color: 'var(--green)' },
-              { label: 'Largest Loss', value: `-$${fmt(Math.abs(largestL))}`, color: 'var(--red)' },
-              { label: 'Expectancy',   value: `$${expectancy}`,        color: 'var(--text)'  },
+              { label: 'Average Win',  value: `₹${fmt(avgWin)}`,       color: 'var(--green)' },
+              { label: 'Average Loss', value: `-₹${fmt(avgLoss)}`,     color: 'var(--red)'   },
+              { label: 'Largest Win',  value: `₹${fmt(largestW)}`,     color: 'var(--green)' },
+              { label: 'Largest Loss', value: `-₹${fmt(Math.abs(largestL))}`, color: 'var(--red)' },
+              { label: 'Expectancy',   value: `₹${expectancy}`,        color: 'var(--text)'  },
             ].map(({ label, value, color }, i, arr) => (
               <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 0', borderBottom: i < arr.length - 1 ? '1px solid var(--border)' : 'none' }}>
                 <span style={{ fontSize: 14, color: 'var(--text-2)' }}>{label}</span>

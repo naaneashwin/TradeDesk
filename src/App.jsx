@@ -13,6 +13,7 @@ import {
   deleteStrategy,
   getTrades,
   insertTrade,
+  updateTrade,
   deleteTrade,
   getChecklistItems,
   upsertChecklistItem,
@@ -355,6 +356,10 @@ export default function App() {
   const handleInsertTrade = withSync(async (trade) => {
     await insertTrade(trade);
     setTrades((prev) => [trade, ...prev]);
+  });
+  const handleUpdateTrade = withSync(async (trade) => {
+    await updateTrade(trade);
+    setTrades((prev) => prev.map((t) => (t.id === trade.id ? trade : t)));
   });
   const handleDeleteTrade = withSync(async (id) => {
     await deleteTrade(id);
@@ -1042,6 +1047,7 @@ export default function App() {
                   strats={strats}
                   onDelete={handleDeleteTrade}
                   onLogTrade={handleInsertTrade}
+                  onEditTrade={handleUpdateTrade}
                 />
               }
             />
