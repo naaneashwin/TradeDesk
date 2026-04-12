@@ -62,8 +62,8 @@ export const CALC_META = {
     howItWorks: "Given your total portfolio, the capital allocated to this trade, and your % risk limit, it finds the maximum shares you can enter while capping the rupee loss at your stop-loss price.",
     formula: "Shares = min(MaxRisk ÷ |Entry − SL|,  Capital ÷ Entry)",
     fields: [
-      { name: "Total Portfolio Capital", desc: "Your entire account value — used to calculate the absolute rupee risk cap." },
-      { name: "Capital for This Trade",  desc: "Max money you are willing to deploy in this single trade." },
+      { name: "Total Investment",        desc: "Your entire account value — used to calculate the absolute rupee risk cap." },
+      { name: "Capital Per Trade",       desc: "Max money you are willing to deploy in this single trade." },
       { name: "Risk Per Trade %",        desc: "The % of your total portfolio you can tolerate losing if stop-loss is hit. Typically 0.5–2%." },
       { name: "Entry Price",             desc: "The price at which you plan to enter the position." },
       { name: "Stop Loss Price",         desc: "Your hard exit price if the trade moves against you. Below entry for Long, above entry for Short." },
@@ -517,33 +517,48 @@ export default function Calculator() {
   const [direction, setDirection] = useState(
     () => { const m = CALC_META[initCalc]; return m?.direction === "short" ? "short" : "long"; }
   );
+  const [resetKey, setResetKey] = useState(0);
+
   const entry         = CALCULATORS.find((c) => c.id === selected);
   const CalcComponent = entry.component;
   const isComparator  = !!entry.isComparator;
 
   const handleSelect = (id) => {
     setSelected(id);
+    setResetKey(0);
     const meta = CALC_META[id];
     if (meta && meta.direction !== "selectable")
       setDirection(meta.direction === "short" ? "short" : "long");
   };
 
+  const handleReset = () => setResetKey((k) => k + 1);
+
   return (
     <div>
-      <div style={{ marginBottom: 28 }}>
-        <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Calculator Type</label>
-        <select value={selected} onChange={(e) => handleSelect(e.target.value)} className="t-inp" style={{ maxWidth: 260, cursor: "pointer" }}>
-          {CALCULATORS.map((c) => (
-            <option key={c.id} value={c.id}>{c.label}</option>
-          ))}
-        </select>
+      <div style={{ marginBottom: 28, display: "flex", alignItems: "flex-end", gap: 12 }}>
+        <div>
+          <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Calculator Type</label>
+          <select value={selected} onChange={(e) => handleSelect(e.target.value)} className="t-inp" style={{ maxWidth: 260, cursor: "pointer" }}>
+            {CALCULATORS.map((c) => (
+              <option key={c.id} value={c.id}>{c.label}</option>
+            ))}
+          </select>
+        </div>
+        <button
+          onClick={handleReset}
+          style={{ padding: "9px 18px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text-2)", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "Inter, sans-serif", transition: "all 0.15s", whiteSpace: "nowrap" }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--border-2)"; e.currentTarget.style.color = "var(--text)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)";   e.currentTarget.style.color = "var(--text-2)"; }}
+        >
+          ↺ Reset
+        </button>
       </div>
 
       {isComparator ? (
-        <SimSpotProvider key={selected}><CalcComponent key={selected} /></SimSpotProvider>
+        <SimSpotProvider key={`${selected}-${resetKey}`}><CalcComponent key={`${selected}-${resetKey}`} /></SimSpotProvider>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 28, alignItems: "start" }}>
-          <SimSpotProvider key={selected}><CalcComponent key={selected} direction={direction} /></SimSpotProvider>
+          <SimSpotProvider key={`${selected}-${resetKey}`}><CalcComponent key={`${selected}-${resetKey}`} direction={direction} /></SimSpotProvider>
           <InfoPanel calcId={selected} direction={direction} onDirectionChange={setDirection} />
         </div>
       )}

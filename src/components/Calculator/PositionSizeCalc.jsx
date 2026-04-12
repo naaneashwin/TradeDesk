@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { CARD, SEC_TITLE, ERROR_BOX, Field, StatCard, DissectPanel, fmtINR, fmt2 } from "./shared";
+import { getUserPreferences, upsertUserPreferences } from "../../lib/db";
 
 const ITEM_COLORS = [
   { id: "gray",   hex: "#d1d5db" }, { id: "indigo", hex: "#a8a4e8" },
@@ -11,6 +12,43 @@ const ITEM_COLORS = [
 export default function PositionSizeCalc({ direction = "long" }) {
   const [form, setForm] = useState({ total: "", capital: "", risk: "1", entry: "", sl: "" });
   const onChange = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  // ── Load persisted total + capital on mount ───────────────
+  useEffect(() => {
+    // 1. Instant load from localStorage (no network lag)
+    const lsTotal   = localStorage.getItem("td-pref-total")   ?? "";
+    const lsCapital = localStorage.getItem("td-pref-capital") ?? "";
+    if (lsTotal || lsCapital) {
+      setForm((p) => ({ ...p, total: lsTotal, capital: lsCapital }));
+    }
+    // 2. Sync from DB — may update to latest value across devices
+    getUserPreferences()
+      .then((prefs) => {
+        if (!prefs) return;
+        setForm((p) => ({
+          ...p,
+          ...(prefs.totalInvestment  ? { total:   prefs.totalInvestment  } : {}),
+          ...(prefs.capitalPerTrade  ? { capital: prefs.capitalPerTrade  } : {}),
+        }));
+        if (prefs.totalInvestment)  localStorage.setItem("td-pref-total",   prefs.totalInvestment);
+        if (prefs.capitalPerTrade)  localStorage.setItem("td-pref-capital", prefs.capitalPerTrade);
+      })
+      .catch(() => {}); // silently ignore if not logged in
+  }, []);
+
+  // ── Auto-save total + capital whenever they change ────────
+  const saveTimer = useRef(null);
+  useEffect(() => {
+    if (!form.total && !form.capital) return;
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      if (form.total)   localStorage.setItem("td-pref-total",   form.total);
+      if (form.capital) localStorage.setItem("td-pref-capital", form.capital);
+      upsertUserPreferences({ totalInvestment: form.total, capitalPerTrade: form.capital })
+        .catch(() => {});
+    }, 800);
+    return () => clearTimeout(saveTimer.current);
+  }, [form.total, form.capital]);
 
   // SL calculator state
   const [slMethod, setSlMethod] = useState("atr");
@@ -91,8 +129,8 @@ export default function PositionSizeCalc({ direction = "long" }) {
       <div style={CARD}>
         <p style={SEC_TITLE}>Trade Inputs</p>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-          <Field label="Total Portfolio Capital (₹)" k="total"   placeholder="100000" hint="Your total portfolio value"          form={form} onChange={onChange} />
-          <Field label="Capital for This Trade (₹)"  k="capital" placeholder="20000"  hint="Max capital allocated to this trade" form={form} onChange={onChange} />
+          <Field label="Total Investment (₹)"   k="total"   placeholder="100000" hint="Saved · persists across sessions"       form={form} onChange={onChange} />
+          <Field label="Capital Per Trade (₹)"    k="capital" placeholder="20000"  hint="Saved · persists across sessions"       form={form} onChange={onChange} />
           <Field label="Risk Per Trade (%)"           k="risk"    placeholder="1"      hint="Typical: 0.5% – 2%"                 form={form} onChange={onChange} />
           <Field label="Entry Price (₹)"              k="entry"   placeholder="500"    hint="Your planned entry price"           form={form} onChange={onChange} />
 
@@ -175,7 +213,7 @@ export default function PositionSizeCalc({ direction = "long" }) {
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
-            <StatCard label="Capital Required"   val={fmtINR(result.capReq)}    sub={`${fmt2(result.capPct)}% of trade capital`} />
+            <StatCard label="Capital Required"   val={fmtINR(result.capReq)}    sub={`${fmt2(result.capPct)}% of capital per trade`} />
             <StatCard label="Actual Risk Amount"  val={fmtINR(result.actualRisk)} sub={`Max allowed: ${fmtINR(result.maxRisk)}`} col="#d97706" />
             <StatCard label="Portfolio Heat"      val={fmt2(result.actualHeat) + "%"} sub={`Target ${form.risk}% · Actual ${fmt2(result.actualHeat)}%`} col={result.actualHeat <= risk ? "var(--green)" : "#d97706"} />
             <StatCard label="Risk Per Share"      val={fmtINR(riskPerShare)} sub={isLong ? `${fmtINR(entry)} entry − ${fmtINR(sl)} stop` : `${fmtINR(sl)} stop − ${fmtINR(entry)} entry`} />

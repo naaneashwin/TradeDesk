@@ -70,7 +70,7 @@ function StatSummaryCard({ label, value, accent }) {
   );
 }
 
-function ThreeDotMenu({ onEdit, onDelete, onToggle, active }) {
+function ThreeDotMenu({ onEdit, onDelete, onToggle, onClone, active }) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (!open) return;
@@ -117,6 +117,7 @@ function ThreeDotMenu({ onEdit, onDelete, onToggle, active }) {
           {[
             { label: active ? "Deactivate" : "Activate", action: onToggle },
             { label: "Edit", action: onEdit },
+            { label: "Clone", action: onClone },
             { label: "Delete", action: onDelete, danger: true },
           ].map(({ label, action, danger }) => (
             <button
@@ -165,6 +166,13 @@ export default function Library({
     document.addEventListener("td:new-strategy", handler);
     return () => document.removeEventListener("td:new-strategy", handler);
   }, []);
+
+  const handleCloneStrategy = (st) => {
+    onUpsert(
+      { id: uid(), name: `Copy of ${st.name}`, desc: st.desc, active: false, variants: [], totals: {} },
+      null,
+    );
+  };
 
   const handleSaveStrategy = async ({ name, desc }, entries, isEdit) => {
     if (isEdit) {
@@ -265,6 +273,7 @@ export default function Library({
                     active={st.active}
                     onToggle={() => onUpsert({ ...st, active: !st.active })}
                     onEdit={() => setEditTarget(st)}
+                    onClone={() => handleCloneStrategy(st)}
                     onDelete={() => setDeleteTarget(st)}
                   />
                 </div>

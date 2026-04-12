@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import LogModal from './LogModal'
-import { getStrategyChecklistSections } from '../lib/db'
+import { getStrategyChecklistSections, getScanners, upsertScanner, deleteScanner } from '../lib/db'
+import { uid } from './ui'
 
 const COL = {
   purple: ['#1e2a4a','#c7c4f0'], indigo: ['#1e2a4a','#a8a4e8'], blue: ['#1e2a4a','#93c5fd'],
@@ -235,6 +236,254 @@ function BacktestingTab({ trades, strategyId }) {
   )
 }
 
+// ── Tag color palette ─────────────────────────────────────────
+const TAG_COLORS = [
+  { bg: 'rgba(79,110,247,0.1)',  border: 'rgba(79,110,247,0.3)',  text: '#4f6ef7'        },
+  { bg: 'rgba(45,122,95,0.1)',   border: 'rgba(45,122,95,0.3)',   text: 'var(--green)'   },
+  { bg: 'rgba(217,119,6,0.1)',   border: 'rgba(217,119,6,0.3)',   text: '#d97706'        },
+  { bg: 'rgba(139,92,246,0.1)',  border: 'rgba(139,92,246,0.3)',  text: '#8b5cf6'        },
+  { bg: 'rgba(236,72,153,0.1)',  border: 'rgba(236,72,153,0.3)',  text: '#ec4899'        },
+  { bg: 'rgba(6,182,212,0.1)',   border: 'rgba(6,182,212,0.3)',   text: '#06b6d4'        },
+  { bg: 'rgba(249,115,22,0.1)',  border: 'rgba(249,115,22,0.3)',  text: '#f97316'        },
+  { bg: 'rgba(168,162,232,0.12)',border: 'rgba(168,162,232,0.4)', text: '#a8a4e8'        },
+]
+function tagStyle(tag) {
+  let hash = 0
+  for (let i = 0; i < tag.length; i++) hash = tag.charCodeAt(i) + ((hash << 5) - hash)
+  const c = TAG_COLORS[Math.abs(hash) % TAG_COLORS.length]
+  return c
+}
+
+// ── Scanner form / modal ──────────────────────────────────────
+function ScannerModal({ initial, onSave, onClose }) {
+  const [name, setName]         = useState(initial?.name        ?? '')
+  const [url,  setUrl]          = useState(initial?.url         ?? '')
+  const [desc, setDesc]         = useState(initial?.description ?? '')
+  const [tags, setTags]         = useState(initial?.tags        ?? [])
+  const [tagInput, setTagInput] = useState('')
+  const [error, setError]       = useState('')
+
+  const addTag = () => {
+    const t = tagInput.trim()
+    if (!t || tags.includes(t)) { setTagInput(''); return }
+    setTags(prev => [...prev, t])
+    setTagInput('')
+  }
+  const removeTag = (t) => setTags(prev => prev.filter(x => x !== t))
+
+  const handleSave = () => {
+    if (!name.trim()) { setError('Name is required.'); return }
+    if (!url.trim())  { setError('URL is required.'); return }
+    try { new URL(url.trim()) } catch { setError('Please enter a valid URL (include https://).'); return }
+    onSave({ name: name.trim(), url: url.trim(), description: desc.trim(), tags })
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 28, width: '100%', maxWidth: 480 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+          <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', margin: 0 }}>{initial ? 'Edit Scanner' : 'Add Scanner'}</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: 'var(--text-3)', padding: '0 4px', lineHeight: 1 }}>×</button>
+        </div>
+
+        {error && <p style={{ fontSize: 13, color: 'var(--red)', marginBottom: 14, padding: '8px 12px', background: 'rgba(220,38,38,0.07)', borderRadius: 8 }}>{error}</p>}
+
+        {/* Name */}
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Scanner Name *</label>
+          <input className="t-inp" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. 52-Week Breakout" style={{ width: '100%' }}/>
+        </div>
+
+        {/* URL */}
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Chartink URL *</label>
+          <input className="t-inp" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://chartink.com/screener/..." style={{ width: '100%' }}/>
+        </div>
+
+        {/* Description */}
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Description <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></label>
+          <textarea className="t-inp" value={desc} onChange={e => setDesc(e.target.value)} placeholder="What does this scanner look for?" rows={2} style={{ width: '100%', resize: 'vertical' }}/>
+        </div>
+
+        {/* Tags */}
+        <div style={{ marginBottom: 24 }}>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Tags</label>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+            {tags.map(t => {
+              const c = tagStyle(t)
+              return (
+                <span key={t} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, padding: '3px 9px', borderRadius: 20, background: c.bg, color: c.text, border: `1px solid ${c.border}` }}>
+                  {t}
+                  <button onClick={() => removeTag(t)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: c.text, padding: 0, fontSize: 13, lineHeight: 1, opacity: 0.7 }}>×</button>
+                </span>
+              )
+            })}
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input className="t-inp" value={tagInput} onChange={e => setTagInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag() } }}
+              placeholder="Type tag + Enter  (e.g. momentum, breakout…)" style={{ flex: 1 }}/>
+            <button onClick={addTag}
+              style={{ padding: '9px 14px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', fontSize: 13, color: 'var(--text-2)', fontFamily: 'Inter, sans-serif' }}>Add</button>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button className="btn-outline" style={{ padding: '9px 20px' }} onClick={onClose}>Cancel</button>
+          <button className="btn-green"   style={{ padding: '9px 20px' }} onClick={handleSave}>{initial ? 'Save Changes' : 'Add Scanner'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Scanners tab ──────────────────────────────────────────────
+function ScannersTab({ strategyId }) {
+  const [scanners,    setScanners]    = useState([])
+  const [loading,     setLoading]     = useState(true)
+  const [showModal,   setShowModal]   = useState(false)
+  const [editTarget,  setEditTarget]  = useState(null)
+  const [deleteId,    setDeleteId]    = useState(null)
+
+  useEffect(() => {
+    setLoading(true)
+    getScanners(strategyId)
+      .then(setScanners)
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [strategyId])
+
+  const handleSave = async (data) => {
+    const scanner = { id: editTarget?.id ?? uid(), strategyId, ...data }
+    await upsertScanner(scanner)
+    setScanners(prev => {
+      const i = prev.findIndex(s => s.id === scanner.id)
+      return i >= 0 ? prev.map(s => s.id === scanner.id ? { ...s, ...scanner } : s) : [...prev, scanner]
+    })
+    setShowModal(false)
+    setEditTarget(null)
+  }
+
+  const handleDelete = async (id) => {
+    await deleteScanner(id)
+    setScanners(prev => prev.filter(s => s.id !== id))
+    setDeleteId(null)
+  }
+
+  return (
+    <div>
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+        <div>
+          <p style={{ fontSize: 14, color: 'var(--text-2)', margin: 0 }}>
+            Chartink scanners linked to this strategy. Click any scanner to open it.
+          </p>
+        </div>
+        <button className="btn-green" style={{ padding: '9px 18px', display: 'flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap' }}
+          onClick={() => { setEditTarget(null); setShowModal(true) }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Add Scanner
+        </button>
+      </div>
+
+      {loading && (
+        <p style={{ fontSize: 13, color: 'var(--text-3)', textAlign: 'center', padding: '40px 0' }}>Loading scanners…</p>
+      )}
+
+      {!loading && scanners.length === 0 && (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '48px 24px', textAlign: 'center' }}>
+          <div style={{ width: 52, height: 52, borderRadius: 14, background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </div>
+          <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>No scanners yet</p>
+          <p style={{ fontSize: 13, color: 'var(--text-3)', marginBottom: 18 }}>Add a Chartink scanner to quickly jump into your watchlist.</p>
+          <button className="btn-green" style={{ padding: '9px 20px' }} onClick={() => { setEditTarget(null); setShowModal(true) }}>Add your first scanner</button>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {scanners.map(sc => (
+          <div key={sc.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', transition: 'box-shadow 0.15s, border-color 0.15s' }}
+            onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.08)'; e.currentTarget.style.borderColor = 'var(--border-2)' }}
+            onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = 'var(--border)' }}>
+            <div style={{ padding: '18px 20px', display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+              {/* Icon */}
+              <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(45,122,95,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              </div>
+              {/* Content */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: sc.description || sc.tags.length ? 8 : 0 }}>
+                  <p style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', margin: 0 }}>{sc.name}</p>
+                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    <button onClick={() => { setEditTarget(sc); setShowModal(true) }}
+                      style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
+                      Edit
+                    </button>
+                    <button onClick={() => setDeleteId(sc.id)}
+                      style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, borderRadius: 7, border: '1px solid rgba(220,38,38,0.3)', background: 'transparent', color: 'var(--red)', cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
+                      Delete
+                    </button>
+                  </div>
+                </div>
+                {sc.description && (
+                  <p style={{ fontSize: 13, color: 'var(--text-2)', margin: '0 0 10px', lineHeight: 1.5 }}>{sc.description}</p>
+                )}
+                {sc.tags.length > 0 && (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+                    {sc.tags.map(t => {
+                      const c = tagStyle(t)
+                      return (
+                        <span key={t} style={{ fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 20, background: c.bg, color: c.text, border: `1px solid ${c.border}` }}>{t}</span>
+                      )
+                    })}
+                  </div>
+                )}
+                <a href={sc.url} target="_blank" rel="noopener noreferrer"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '8px 16px', background: 'var(--green)', color: '#fff', borderRadius: 8, fontSize: 13, fontWeight: 700, textDecoration: 'none', transition: 'opacity 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
+                  onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
+                  Open Scanner
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                </a>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Add / Edit modal */}
+      {showModal && (
+        <ScannerModal
+          initial={editTarget}
+          onSave={handleSave}
+          onClose={() => { setShowModal(false); setEditTarget(null) }}
+        />
+      )}
+
+      {/* Delete confirm */}
+      {deleteId && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+          onClick={e => { if (e.target === e.currentTarget) setDeleteId(null) }}>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 28, width: '100%', maxWidth: 380 }}>
+            <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>Delete Scanner</h3>
+            <p style={{ fontSize: 14, color: 'var(--text-2)', marginBottom: 24 }}>This scanner will be permanently removed from this strategy.</p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="btn-outline" style={{ padding: '9px 18px' }} onClick={() => setDeleteId(null)}>Cancel</button>
+              <button style={{ padding: '9px 18px', background: 'var(--red)', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontSize: 14 }}
+                onClick={() => handleDelete(deleteId)}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Checklist({ strategy, trades = [], onLogTrade, onBack }) {
   const [variant, setVariant]     = useState(strategy.variants?.[0]?.id ?? null)
   const [activeTab, setActiveTab] = useState('checklist')
@@ -309,7 +558,8 @@ export default function Checklist({ strategy, trades = [], onLogTrade, onBack })
     : sections.flatMap(s => s.items ?? []).filter(i => !i.detail).slice(0, 4).map(i => i.label).join(' · ')
 
   const tabs = [
-    { id: 'checklist', label: 'Checklist & Rules' },
+    { id: 'checklist',  label: 'Checklist & Rules' },
+    { id: 'scanners',   label: 'Scanners' },
     { id: 'backtesting', label: 'Backtesting' },
   ]
 
@@ -364,6 +614,8 @@ export default function Checklist({ strategy, trades = [], onLogTrade, onBack })
       </div>
 
       {activeTab === 'backtesting' && <BacktestingTab trades={trades} strategyId={strategy.id}/>}
+
+      {activeTab === 'scanners' && <ScannersTab strategyId={strategy.id}/>}
 
       {activeTab === 'checklist' && <>
       {/* Variant selector */}

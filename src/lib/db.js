@@ -290,3 +290,86 @@ export async function saveStrategyChecklist(strategyId, sections) {
   const { error } = await supabase.from('strategy_checklist_items').insert(rows)
   if (error) throw error
 }
+
+// ── User Preferences ─────────────────────────────────────────
+
+export async function getUserPreferences() {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const { data, error } = await supabase
+    .from('user_preferences')
+    .select('total_investment, capital_per_trade')
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (error) throw error
+  if (!data) return null
+  return {
+    totalInvestment: data.total_investment != null ? String(data.total_investment) : '',
+    capitalPerTrade: data.capital_per_trade != null ? String(data.capital_per_trade) : '',
+  }
+}
+
+export async function upsertUserPreferences({ totalInvestment, capitalPerTrade }) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+
+  const { error } = await supabase
+    .from('user_preferences')
+    .upsert(
+      {
+        user_id:           user.id,
+        total_investment:  totalInvestment  ? parseFloat(totalInvestment)  : null,
+        capital_per_trade: capitalPerTrade  ? parseFloat(capitalPerTrade)  : null,
+        updated_at:        new Date().toISOString(),
+      },
+      { onConflict: 'user_id' }
+    )
+
+  if (error) throw error
+}
+
+// ── Scanners ─────────────────────────────────────────────────
+
+export async function getScanners(strategyId) {
+  const { data, error } = await supabase
+    .from('scanners')
+    .select('*')
+    .eq('strategy_id', strategyId)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return data.map(r => ({
+    id:          r.id,
+    strategyId:  r.strategy_id,
+    name:        r.name,
+    url:         r.url,
+    description: r.description ?? '',
+    tags:        r.tags ?? [],
+  }))
+}
+
+export async function upsertScanner(scanner) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+  const { error } = await supabase
+    .from('scanners')
+    .upsert(
+      {
+        id:          scanner.id,
+        strategy_id: scanner.strategyId,
+        user_id:     user.id,
+        name:        scanner.name,
+        url:         scanner.url,
+        description: scanner.description || null,
+        tags:        scanner.tags ?? [],
+      },
+      { onConflict: 'id' }
+    )
+  if (error) throw error
+}
+
+export async function deleteScanner(id) {
+  const { error } = await supabase.from('scanners').delete().eq('id', id)
+  if (error) throw error
+}
