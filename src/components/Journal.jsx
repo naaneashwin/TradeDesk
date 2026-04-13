@@ -38,6 +38,7 @@ const COLS = [
   { key: 'pnl',         label: 'PNL',      sortable: true, right: true },
   { key: 'rMult',       label: 'R-MULT',   sortable: true, right: true },
   { key: 'outcome',     label: 'STATUS',   sortable: false },
+  { key: 'mock',        label: 'MOCK',     sortable: false },
   { key: '_del',        label: '',         sortable: false },
 ]
 
@@ -177,6 +178,36 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
 
   const sm = Object.fromEntries(strats.map(st => [st.id, st]))
 
+  const exportCSV = () => {
+    const headers = ['Date','Instrument','Strategy','Direction','Entry Price','Exit Price','Qty','Days Held','PnL','Outcome','Mock','Notes','Exits']
+    const rows = trades.map(t => {
+      const days = daysHeld(t)
+      const exitsStr = (t.exits ?? []).map(e => `${e.exitDate}:qty${e.qty}@${e.exitPrice}=₹${(e.pnl ?? 0).toFixed(2)}`).join(' | ')
+      return [
+        t.date ?? '',
+        t.instrument ?? '',
+        sm[t.strategyId]?.name ?? '',
+        t.direction ?? '',
+        t.entryPrice ?? '',
+        t.exitPrice ?? '',
+        t.qty ?? '',
+        days != null ? days : '',
+        t.pnl ?? '',
+        t.outcome ?? '',
+        t.mock ? 'Yes' : 'No',
+        (t.notes ?? '').replace(/"/, "'"),
+        exitsStr,
+      ]
+    })
+    const esc = v => '"' + String(v).replace(/"/g, "'") + '"'
+    const csv = [headers, ...rows].map(r => r.map(esc).join(',')).join('\n')
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+    a.download = 'trades_' + new Date().toISOString().slice(0, 10) + '.csv'
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
   const activeFilterCount = [
     filters.outcome !== 'all', filters.direction !== 'all',
     filters.strategyId !== 'all', dateRange.from || dateRange.to,
@@ -254,6 +285,15 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
         </div>
 
         <span style={{ fontSize: 12, color: 'var(--text-3)', marginLeft: 4 }}>{processed.length} trade{processed.length !== 1 ? 's' : ''}</span>
+
+        {/* Export */}
+        <button onClick={exportCSV} className="btn-outline"
+          style={{ marginLeft: 'auto', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 9 }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Export CSV
+        </button>
       </div>
 
       {/* Table */}
@@ -348,6 +388,11 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
                       {t.rMult != null ? `${t.rMult > 0 ? '+' : ''}${t.rMult}R` : '—'}
                     </td>
                     <td style={{ padding: '16px 16px' }}>{statusPill(t.outcome)}</td>
+                    <td style={{ padding: '16px 16px' }}>
+                      {t.mock && (
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: 'rgba(217,119,6,0.1)', color: '#d97706', border: '1px solid rgba(217,119,6,0.25)', whiteSpace: 'nowrap' }}>MOCK</span>
+                      )}
+                    </td>
                     <td style={{ padding: '16px 16px' }}>
                       <div style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'flex-end' }}>
                         {/* Edit */}

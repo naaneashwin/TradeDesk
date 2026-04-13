@@ -115,6 +115,7 @@ function rowToTrade(row) {
     pnl:            Number(row.pnl),
     notes:          row.notes,
     exits:          row.exits ?? [],
+    mock:           row.mock ?? false,
   }
 }
 
@@ -134,6 +135,7 @@ function tradeToRow(t) {
     pnl:             t.pnl,
     notes:           t.notes,
     exits:           t.exits ?? [],
+    mock:            t.mock ?? false,
   }
 }
 

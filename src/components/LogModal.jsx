@@ -22,6 +22,7 @@ export default function LogModal({ strategy, onSave, onUpdate, onClose, variant,
     entryPrice:  isEdit ? String(editTrade.entryPrice) : '',
     qty:         isEdit ? String(editTrade.qty)        : '',
     notes:       isEdit ? (editTrade.notes || '')      : '',
+    mock:        isEdit ? (editTrade.mock ?? false)    : false,
   })
 
   const defaultExits = isEdit && editTrade.exits?.length
@@ -77,6 +78,7 @@ export default function LogModal({ strategy, onSave, onUpdate, onClose, variant,
       exitPrice:      weightedAvgExit,
       pnl:            hasExits ? totalPnl : 0,
       outcome,
+      mock: form.mock,
       exits: filledExits.map(e => ({
         id:        e.id,
         exitDate:  e.exitDate || form.date,
@@ -199,6 +201,26 @@ export default function LogModal({ strategy, onSave, onUpdate, onClose, variant,
           </span>
         </div>
       )}
+
+      {/* Mock trade toggle */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16, padding: '12px 14px', background: form.mock ? 'rgba(217,119,6,0.06)' : 'var(--surface-2)', border: `1px solid ${form.mock ? 'rgba(217,119,6,0.25)' : 'var(--border)'}`, borderRadius: 10, cursor: 'pointer' }}
+        onClick={() => fEntry('mock', !form.mock)}>
+        <div style={{ display: 'flex', gap: 10 }}>
+          {['real', 'mock'].map(opt => {
+            const active = (opt === 'mock') === form.mock
+            return (
+              <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 13, fontWeight: active ? 700 : 500, color: active ? (opt === 'mock' ? '#d97706' : 'var(--green)') : 'var(--text-2)' }}
+                onClick={e => { e.stopPropagation(); fEntry('mock', opt === 'mock') }}>
+                <div style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${active ? (opt === 'mock' ? '#d97706' : 'var(--green)') : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {active && <div style={{ width: 7, height: 7, borderRadius: '50%', background: opt === 'mock' ? '#d97706' : 'var(--green)' }}/>}
+                </div>
+                {opt === 'real' ? 'Real Trade' : 'Mock / Paper Trade'}
+              </label>
+            )
+          })}
+        </div>
+        {form.mock && <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: '#d97706', background: 'rgba(217,119,6,0.1)', border: '1px solid rgba(217,119,6,0.25)', padding: '2px 9px', borderRadius: 20 }}>MOCK</span>}
+      </div>
 
       <Field label="Notes">
         <textarea className="t-inp" style={{ height: 72, resize: 'vertical', marginBottom: 20 }} value={form.notes} onChange={e => fEntry('notes', e.target.value)} placeholder="What went right? What went wrong?"/>
