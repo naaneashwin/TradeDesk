@@ -215,8 +215,48 @@ export async function getStrategyChecklistItemsForEdit(strategyId) {
   }))
 }
 
+// ── In-memory section expanders (no DB calls) ────────────────
+// Use these when strategy.sections and checklistItems are already in memory.
+
+// For Checklist.jsx — shaped for the checklist tab
+export function expandSectionsForChecklist(sections, checklistItems) {
+  const ciMap = Object.fromEntries(checklistItems.map(ci => [ci.id, ci]))
+  return sections
+    .map((sec, i) => ({
+      id:      sec.id ?? `sec-${i}`,
+      n:       i + 1,
+      title:   sec.name || `Section ${i + 1}`,
+      col:     sec.color ?? 'gray',
+      neutral: sec.neutral ?? false,
+      ref:     sec.neutral ?? false,
+      variant: sec.variant ?? null,
+      items:   (sec.items ?? [])
+        .map(id => ciMap[id])
+        .filter(Boolean)
+        .map(ci => ({ id: ci.id, label: ci.title, detail: ci.description ?? null, note: ci.note ?? null, color: ci.color ?? 'gray', v: null })),
+    }))
+    .filter(sec => sec.items.length > 0)
+}
+
+// For Library.jsx edit modal — shaped for the edit form
+export function expandSectionsForEdit(sections, checklistItems) {
+  const ciMap = Object.fromEntries(checklistItems.map(ci => [ci.id, ci]))
+  return sections.map(sec => ({
+    id:      sec.id,
+    name:    sec.name ?? '',
+    color:   sec.color ?? 'gray',
+    neutral: sec.neutral ?? false,
+    variant: sec.variant ?? null,
+    items:   (sec.items ?? [])
+      .map(id => ciMap[id])
+      .filter(Boolean)
+      .map(ci => ({ id: ci.id, label: ci.title, detail: ci.description ?? null, note: ci.note ?? null, color: ci.color ?? 'gray' })),
+  }))
+}
+
 // Returns sections array for Checklist.jsx.
 // Reads from strategies.sections JSON, expands item UUIDs via checklist_items.
+/** @deprecated Use expandSectionsForChecklist() instead — avoids redundant DB queries */
 export async function getStrategyChecklistSections(strategyId) {
   const { data: stData, error: stError } = await supabase
     .from('strategies')

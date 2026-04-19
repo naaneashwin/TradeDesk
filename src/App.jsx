@@ -231,7 +231,7 @@ function Icon({ name, size = 18, color = "currentColor", strokeWidth = 2 }) {
   }
 }
 
-function ChecklistRoute({ strats, trades, onLogTrade }) {
+function ChecklistRoute({ strats, trades, checklistItems, onLogTrade }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const strategy = strats.find((s) => s.id === id);
@@ -240,6 +240,7 @@ function ChecklistRoute({ strats, trades, onLogTrade }) {
     <Checklist
       strategy={strategy}
       trades={trades}
+      checklistItems={checklistItems}
       onLogTrade={onLogTrade}
       onBack={() => navigate("/tradedesk/strategies")}
     />
@@ -261,6 +262,7 @@ export default function App() {
   );
   const [importError, setImportError] = useState(null);
   const impRef = useRef(null);
+  const loadedUserRef = useRef(null); // tracks which userId we've already loaded data for
 
   const tab = location.pathname.split("/")[2] ?? "strategies";
 
@@ -284,6 +286,10 @@ export default function App() {
 
   useEffect(() => {
     if (!session) return;
+    // Skip if we already loaded data for this user (prevents duplicate loads
+    // from onAuthStateChange firing after getSession returns the same user)
+    if (loadedUserRef.current === session.user.id) return;
+    loadedUserRef.current = session.user.id;
     Promise.all([getStrategies(), getTrades(), getChecklistItems()])
       .then(([sv, tv, cv]) => {
         setStrats(sv);
@@ -814,9 +820,12 @@ export default function App() {
             alignItems: "center",
             justifyContent: "space-between",
             padding: "0 28px",
-            position: "sticky",
+            position: "fixed",
             top: 0,
+            left: sideW,
+            right: 0,
             zIndex: 30,
+            transition: "left 0.22s cubic-bezier(0.4,0,0.2,1)",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -1002,7 +1011,7 @@ export default function App() {
         )}
 
         {/* Content */}
-        <main style={{ flex: 1, padding: "28px 32px" }}>
+        <main style={{ flex: 1, padding: "28px 32px", paddingTop: 92 }}>
           <Routes>
             <Route
               path="/tradedesk/strategies"
@@ -1024,6 +1033,7 @@ export default function App() {
                 <ChecklistRoute
                   strats={strats}
                   trades={trades}
+                  checklistItems={checklistItems}
                   onLogTrade={handleInsertTrade}
                 />
               }

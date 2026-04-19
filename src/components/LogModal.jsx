@@ -1,5 +1,108 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Modal, uid } from './ui'
+
+function SymbolSearch({ value, onChange }) {
+  const [query,   setQuery]   = useState(value)
+  const [results, setResults] = useState([])
+  const [open,    setOpen]    = useState(false)
+  const [hi,      setHi]      = useState(-1)
+  const [loading, setLoading] = useState(false)
+  const ref      = useRef()
+  const timerRef = useRef()
+
+  useEffect(() => { setQuery(value) }, [value])
+
+  const fetchResults = useCallback(async (q) => {
+    if (!q || q.length < 1) { setResults([]); setOpen(false); return }
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/symbols?q=${encodeURIComponent(q)}`)
+      if (!res.ok) throw new Error('API error')
+      const data = await res.json()
+      if (Array.isArray(data)) {
+        setResults(data)
+        setOpen(data.length > 0)
+      }
+    } catch {
+      setResults([])
+      setOpen(false)
+    } finally {
+      setLoading(false)
+    }
+    setHi(-1)
+  }, [])
+
+  useEffect(() => {
+    clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => fetchResults(query), 300)
+    return () => clearTimeout(timerRef.current)
+  }, [query, fetchResults])
+
+  useEffect(() => {
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+
+  const select = s => {
+    setQuery(s.symbol)
+    onChange(s.symbol)
+    setOpen(false)
+  }
+
+  const onKey = e => {
+    if (!open) return
+    if (e.key === 'ArrowDown') { e.preventDefault(); setHi(h => Math.min(h + 1, results.length - 1)) }
+    if (e.key === 'ArrowUp')   { e.preventDefault(); setHi(h => Math.max(h - 1, 0)) }
+    if (e.key === 'Enter' && hi >= 0) { e.preventDefault(); select(results[hi]) }
+    if (e.key === 'Escape') setOpen(false)
+  }
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <input
+        type="text"
+        className="t-inp"
+        value={query}
+        placeholder="e.g. RELIANCE"
+        onChange={e => { setQuery(e.target.value); onChange(e.target.value) }}
+        onFocus={() => { if (results.length > 0 && query.length > 0) setOpen(true) }}
+        onKeyDown={onKey}
+        autoComplete="off"
+      />
+      {loading && (
+        <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: 'var(--text-3)' }}>…</span>
+      )}
+      {open && results.length > 0 && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, zIndex: 200,
+          background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.14)', overflow: 'hidden',
+        }}>
+          {results.map((s, i) => (
+            <div key={`${s.symbol}-${i}`}
+              onMouseDown={() => select(s)}
+              onMouseEnter={() => setHi(i)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px',
+                cursor: 'pointer', background: i === hi ? 'var(--surface-2)' : 'transparent',
+                borderBottom: i < results.length - 1 ? '1px solid var(--border)' : 'none',
+              }}
+            >
+              <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', fontFamily: 'JetBrains Mono, monospace', minWidth: 110 }}>{s.symbol}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-2)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+              <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 6,
+                background: s.exchange === 'NSE' ? 'rgba(59,130,246,0.1)' : 'rgba(245,158,11,0.1)',
+                color: s.exchange === 'NSE' ? '#3b82f6' : '#d97706',
+                border: `1px solid ${s.exchange === 'NSE' ? 'rgba(59,130,246,0.25)' : 'rgba(245,158,11,0.25)'}`,
+              }}>{s.exchange}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function Field({ label, children }) {
   return (
@@ -105,7 +208,7 @@ export default function LogModal({ strategy, onSave, onUpdate, onClose, variant,
           <input type="date" className="t-inp" value={form.date} onChange={e => fEntry('date', e.target.value)}/>
         </Field>
         <Field label="Instrument">
-          <input type="text" className="t-inp" value={form.instrument} onChange={e => fEntry('instrument', e.target.value)} placeholder="e.g. RELIANCE"/>
+          <SymbolSearch value={form.instrument} onChange={v => fEntry('instrument', v)} />
         </Field>
         <Field label="Direction">
           <select className="t-inp" value={form.direction} onChange={e => fEntry('direction', e.target.value)}>

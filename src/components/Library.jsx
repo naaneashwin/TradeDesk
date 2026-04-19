@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { uid } from "./ui";
-import { getStrategyChecklistItemsForEdit } from "../lib/db";
+import { expandSectionsForEdit } from "../lib/db";
 
 const ITEM_COLORS = [
   { id: "gray",   hex: "#d1d5db" },
@@ -160,6 +160,7 @@ export default function Library({
   const [addModal, setAddModal] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [mockFilter, setMockFilter] = useState('all');
 
   useEffect(() => {
     const handler = () => setAddModal(true);
@@ -192,13 +193,19 @@ export default function Library({
     setDeleteTarget(null);
   };
 
-  const totalTrades = trades.length;
+  const filteredTrades = trades.filter(t => {
+    if (mockFilter === 'mock') return !!t.mock
+    if (mockFilter === 'real') return !t.mock
+    return true
+  });
+
+  const totalTrades = filteredTrades.length;
   const activeCount = strats.filter((x) => x.active).length;
 
   return (
     <div>
       {/* Summary stat cards */}
-      <div style={{ display: "flex", gap: 16, marginBottom: 28 }}>
+      <div style={{ display: "flex", gap: 16, marginBottom: 28, alignItems: "center", flexWrap: "wrap" }}>
         <StatSummaryCard label="Total Strategies" value={strats.length} />
         <StatSummaryCard
           label="Active Strategies"
@@ -206,6 +213,17 @@ export default function Library({
           accent="var(--green)"
         />
         <StatSummaryCard label="Total Trades Logged" value={totalTrades} />
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          {[{ v: 'all', label: 'All Trades' }, { v: 'real', label: 'Real' }, { v: 'mock', label: 'Mock' }].map(({ v, label }) => (
+            <button key={v} onClick={() => setMockFilter(v)}
+              style={{ padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                background: mockFilter === v ? 'var(--green)' : 'var(--surface-2)',
+                color: mockFilter === v ? '#fff' : 'var(--text-2)',
+                border: `1px solid ${mockFilter === v ? 'var(--green)' : 'var(--border)'}` }}>
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Strategy cards grid */}
@@ -217,7 +235,7 @@ export default function Library({
         }}
       >
         {strats.map((st) => {
-          const tt = trades.filter((t) => t.strategyId === st.id);
+          const tt = filteredTrades.filter((t) => t.strategyId === st.id);
           const wr = tt.length
             ? Math.round(
                 (tt.filter((t) => t.outcome === "win").length / tt.length) *
@@ -477,9 +495,11 @@ function StrategyModal({ strategy, checklistItems = [], onUpsertChecklistItem, o
   const [desc, setDesc] = useState(strategy?.desc ?? "");
   const [saving, setSaving] = useState(false);
 
-  // sections: [{ id, name, color, neutral, items: [{ id, label, detail, note, color }] }]
-  const [sections, setSections] = useState([]);
-  const [checklistLoading, setChecklistLoading] = useState(isEdit);
+  // sections expanded in-memory from strategy.sections + checklistItems (no DB call)
+  const [sections, setSections] = useState(() =>
+    isEdit ? expandSectionsForEdit(strategy.sections ?? [], checklistItems) : []
+  );
+  const [checklistLoading] = useState(false);
 
   // Which section the picker / create panel targets
   const [pickerSectionIdx, setPickerSectionIdx] = useState(null);
@@ -490,14 +510,6 @@ function StrategyModal({ strategy, checklistItems = [], onUpsertChecklistItem, o
   const [createNote, setCreateNote] = useState("");
   const [createColor, setCreateColor] = useState("gray");
   const [creating, setCreating] = useState(false);
-
-  useEffect(() => {
-    if (!isEdit) { setChecklistLoading(false); return; }
-    getStrategyChecklistItemsForEdit(strategy.id)
-      .then(setSections)
-      .catch(console.error)
-      .finally(() => setChecklistLoading(false));
-  }, []);
 
   const totalItems = sections.reduce((a, s) => a + s.items.length, 0);
   const allSelectedIds = new Set(sections.flatMap(s => s.items.map(i => i.id)));

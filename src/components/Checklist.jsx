@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import LogModal from './LogModal'
-import { getStrategyChecklistSections, getScanners, upsertScanner, deleteScanner } from '../lib/db'
+import { expandSectionsForChecklist, getScanners, upsertScanner, deleteScanner } from '../lib/db'
 import { uid } from './ui'
 
 const COL = {
@@ -484,22 +484,13 @@ function ScannersTab({ strategyId }) {
   )
 }
 
-export default function Checklist({ strategy, trades = [], onLogTrade, onBack }) {
+export default function Checklist({ strategy, trades = [], checklistItems = [], onLogTrade, onBack }) {
   const [variant, setVariant]     = useState(strategy.variants?.[0]?.id ?? null)
   const [activeTab, setActiveTab] = useState('checklist')
 
-  // Sections fetched from DB
-  const [sections,         setSections]         = useState([])
-  const [sectionsLoading,  setSectionsLoading]  = useState(true)
-
-  useEffect(() => {
-    setSectionsLoading(true)
-    setSections([])
-    getStrategyChecklistSections(strategy.id)
-      .then(setSections)
-      .catch(console.error)
-      .finally(() => setSectionsLoading(false))
-  }, [strategy.id])
+  // Sections expanded in-memory from strategy.sections + checklistItems (no DB call)
+  const sections        = expandSectionsForChecklist(strategy.sections ?? [], checklistItems)
+  const sectionsLoading = false
 
   const st_trades   = trades.filter(t => t.strategyId === strategy.id)
   const trades_count = st_trades.length

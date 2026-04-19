@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import LogModal from './LogModal'
 
 // ── helpers ──────────────────────────────────────────────────
@@ -72,13 +72,13 @@ function FilterPanel({ strats, filters, setFilters, onClose }) {
     }}>
       <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Outcome</p>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
-        {['all', 'win', 'loss', 'breakeven'].map(v => (
+        {['all', 'open', 'win', 'loss', 'breakeven'].map(v => (
           <button key={v} onClick={() => setFilters(f => ({ ...f, outcome: v }))}
             style={{ padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
               background: filters.outcome === v ? 'var(--green)' : 'var(--surface-2)',
               color: filters.outcome === v ? '#fff' : 'var(--text-2)',
               border: `1px solid ${filters.outcome === v ? 'var(--green)' : 'var(--border)'}` }}>
-            {v === 'all' ? 'All' : STATUS_MAP[v]?.label}
+            {v === 'all' ? 'All' : v === 'open' ? 'Active' : STATUS_MAP[v]?.label}
           </button>
         ))}
       </div>
@@ -100,7 +100,19 @@ function FilterPanel({ strats, filters, setFilters, onClose }) {
         <option value="all">All Strategies</option>
         {strats.map(st => <option key={st.id} value={st.id}>{st.name}</option>)}
       </select>
-      <button onClick={() => { setFilters({ outcome: 'all', direction: 'all', strategyId: 'all' }); onClose() }}
+      <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '14px 0 10px' }}>Trade Type</p>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+        {[{ v: 'all', label: 'All' }, { v: 'real', label: 'Real' }, { v: 'mock', label: 'Mock' }].map(({ v, label }) => (
+          <button key={v} onClick={() => setFilters(f => ({ ...f, mock: v }))}
+            style={{ padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+              background: filters.mock === v ? 'var(--green)' : 'var(--surface-2)',
+              color: filters.mock === v ? '#fff' : 'var(--text-2)',
+              border: `1px solid ${filters.mock === v ? 'var(--green)' : 'var(--border)'}` }}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <button onClick={() => { setFilters({ outcome: 'all', direction: 'all', strategyId: 'all', mock: 'all' }); onClose() }}
         style={{ marginTop: 14, width: '100%', padding: '8px', borderRadius: 8, border: '1px solid var(--border)', background: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-2)', fontFamily: 'Inter, sans-serif' }}>
         Clear Filters
       </button>
@@ -158,14 +170,15 @@ function DatePanel({ dateRange, setDateRange, onClose }) {
 
 // ── Main component ────────────────────────────────────────────
 export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTrade }) {
-  const [search,    setSearch]    = useState('')
-  const [filters,   setFilters]   = useState({ outcome: 'all', direction: 'all', strategyId: 'all' })
-  const [dateRange, setDateRange] = useState({ from: '', to: '' })
-  const [sort,      setSort]      = useState({ key: 'date', dir: 'desc' })
-  const [toDelete,  setToDelete]  = useState(null)
-  const [editTrade, setEditTrade] = useState(null)
-  const [logModal,  setLogModal]  = useState(false)
-  const [expanded,  setExpanded]  = useState(new Set())
+  const [search,     setSearch]     = useState('')
+  const [filters,    setFilters]    = useState({ outcome: 'all', direction: 'all', strategyId: 'all', mock: 'all' })
+  const [dateRange,  setDateRange]  = useState({ from: '', to: '' })
+  const [sort,       setSort]       = useState({ key: 'date', dir: 'desc' })
+  const [toDelete,   setToDelete]   = useState(null)
+  const [editTrade,  setEditTrade]  = useState(null)
+  const [logModal,   setLogModal]   = useState(false)
+  const [expanded,   setExpanded]   = useState(new Set())
+  const [livePrices, setLivePrices] = useState({}) // { [tradeId]: { ltp, pnl, change, changePct } }
   const toggleExpand = id => setExpanded(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
   const [showFilter, setShowFilter] = useState(false)
   const [showDate,   setShowDate]   = useState(false)
@@ -175,6 +188,46 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
     document.addEventListener('td:journal-log', h)
     return () => document.removeEventListener('td:journal-log', h)
   }, [])
+
+  // ── Live price polling for open + real trades ──────────────
+  const fetchLivePrices = useCallback(async () => {
+    const openReal = trades.filter(t => t.outcome === 'open' && !t.mock && t.instrument && t.entryPrice)
+    if (!openReal.length) return
+
+    // Deduplicate symbols → fetch each once, then apply to all trades for that symbol
+    const symbols = [...new Set(openReal.map(t => t.instrument.toUpperCase()))]
+    const priceMap = {}
+    await Promise.allSettled(
+      symbols.map(async sym => {
+        try {
+          const res = await fetch(`/api/price?symbol=${encodeURIComponent(sym)}`)
+          if (!res.ok) return
+          const data = await res.json()
+          if (data.ltp != null) priceMap[sym] = data
+        } catch { /* ignore per-symbol failures */ }
+      })
+    )
+
+    setLivePrices(prev => {
+      const next = { ...prev }
+      for (const t of openReal) {
+        const sym  = t.instrument.toUpperCase()
+        const data = priceMap[sym]
+        if (!data) continue
+        const ltp     = data.ltp
+        const qty     = t.qty ?? 0
+        const livePnl = (ltp - t.entryPrice) * qty * (t.direction === 'short' ? -1 : 1)
+        next[t.id] = { ltp, pnl: livePnl, change: data.change, changePct: data.changePct }
+      }
+      return next
+    })
+  }, [trades])
+
+  useEffect(() => {
+    fetchLivePrices()
+    const interval = setInterval(fetchLivePrices, 60_000) // refresh every 60s
+    return () => clearInterval(interval)
+  }, [fetchLivePrices])
 
   const sm = Object.fromEntries(strats.map(st => [st.id, st]))
 
@@ -210,7 +263,7 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
 
   const activeFilterCount = [
     filters.outcome !== 'all', filters.direction !== 'all',
-    filters.strategyId !== 'all', dateRange.from || dateRange.to,
+    filters.strategyId !== 'all', filters.mock !== 'all', dateRange.from || dateRange.to,
   ].filter(Boolean).length
 
   const processed = [...trades]
@@ -219,6 +272,8 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
       if (filters.outcome !== 'all' && t.outcome !== filters.outcome) return false
       if (filters.direction !== 'all' && t.direction !== filters.direction) return false
       if (filters.strategyId !== 'all' && t.strategyId !== filters.strategyId) return false
+      if (filters.mock === 'mock' && !t.mock) return false
+      if (filters.mock === 'real' && t.mock) return false
       if (dateRange.from && t.date < dateRange.from) return false
       if (dateRange.to   && t.date > dateRange.to)   return false
       return true
@@ -319,9 +374,15 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
             </thead>
             <tbody>
               {processed.map((t, i) => {
-                const pnlPct    = t.entryPrice && t.exitPrice ? ((t.exitPrice - t.entryPrice) / t.entryPrice * (t.direction === 'short' ? -1 : 1) * 100) : null
-                const barW      = Math.min(Math.abs(t.pnl || 0) / maxPnl * 100, 100)
-                const pnlColor  = t.pnl > 0 ? 'var(--green)' : t.pnl < 0 ? 'var(--red)' : 'var(--text-2)'
+                const live      = livePrices[t.id]                // present only for open+real trades
+                const dispPnl   = live != null ? live.pnl   : t.pnl
+                const pnlPct    = live != null && t.entryPrice
+                  ? ((live.ltp - t.entryPrice) / t.entryPrice * (t.direction === 'short' ? -1 : 1) * 100)
+                  : t.entryPrice && t.exitPrice
+                    ? ((t.exitPrice - t.entryPrice) / t.entryPrice * (t.direction === 'short' ? -1 : 1) * 100)
+                    : null
+                const barW      = Math.min(Math.abs(dispPnl || 0) / maxPnl * 100, 100)
+                const pnlColor  = dispPnl > 0 ? 'var(--green)' : dispPnl < 0 ? 'var(--red)' : 'var(--text-2)'
                 const days      = daysHeld(t)
                 const multiExit = t.exits?.length > 1
                 const isExpanded = expanded.has(t.id)
@@ -332,7 +393,19 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
                     onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-2)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                     <td style={{ padding: '16px 16px', fontSize: 13, color: 'var(--text-2)', whiteSpace: 'nowrap' }}>{t.date}</td>
-                    <td style={{ padding: '16px 16px', fontWeight: 700, color: 'var(--text)', fontSize: 14 }}>{t.instrument}</td>
+                    <td style={{ padding: '16px 16px', fontWeight: 700, color: 'var(--text)', fontSize: 14 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {t.instrument}
+                        {live && (
+                          <span style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-3)' }}>
+                            LTP <span style={{ color: live.changePct >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>₹{live.ltp.toFixed(2)}</span>
+                            <span style={{ marginLeft: 4, color: live.changePct >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                              {live.changePct >= 0 ? '▲' : '▼'}{Math.abs(live.changePct).toFixed(2)}%
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td style={{ padding: '16px 16px', maxWidth: 110 }}>
                       {(() => {
                         const name = sm[t.strategyId]?.name ?? '—'
@@ -365,6 +438,8 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
                             </button>
                           )}
                         </div>
+                      ) : live ? (
+                        <span style={{ fontSize: 12, color: 'var(--text-3)', fontStyle: 'italic' }}>live</span>
                       ) : '—'}
                     </td>
                     <td style={{ padding: '16px 16px', textAlign: 'right', whiteSpace: 'nowrap' }}>
@@ -376,8 +451,9 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
                     <td style={{ padding: '16px 16px', textAlign: 'right' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+                          {live && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: 'rgba(59,130,246,0.15)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.3)', letterSpacing: '0.04em' }}>LIVE</span>}
                           {pnlPct !== null && <span style={{ fontSize: 11, color: pnlColor }}>{pnlPct > 0 ? '+' : ''}{pnlPct.toFixed(2)}%</span>}
-                          <span style={{ fontSize: 15, fontWeight: 700, color: pnlColor }}>{t.pnl > 0 ? '+' : ''}{t.pnl?.toFixed(0)}</span>
+                          <span style={{ fontSize: 15, fontWeight: 700, color: pnlColor }}>{dispPnl > 0 ? '+' : ''}{dispPnl?.toFixed(0)}</span>
                         </div>
                         <div style={{ width: 48, height: 3, borderRadius: 2, background: 'var(--border)', overflow: 'hidden' }}>
                           <div style={{ height: '100%', width: `${barW}%`, background: pnlColor, borderRadius: 2 }}/>

@@ -1,4 +1,21 @@
+import { useState } from 'react'
 import { fmt } from './ui'
+
+function MockToggle({ value, onChange }) {
+  return (
+    <div style={{ display: 'flex', gap: 6 }}>
+      {[{ v: 'all', label: 'All Trades' }, { v: 'real', label: 'Real' }, { v: 'mock', label: 'Mock' }].map(({ v, label }) => (
+        <button key={v} onClick={() => onChange(v)}
+          style={{ padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+            background: value === v ? 'var(--green)' : 'var(--surface-2)',
+            color: value === v ? '#fff' : 'var(--text-2)',
+            border: `1px solid ${value === v ? 'var(--green)' : 'var(--border)'}` }}>
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 function SummaryCard({ label, value, accent }) {
   return (
@@ -184,40 +201,57 @@ function PnlByStrategy({ trades, strats }) {
 }
 
 export default function StatsView({ trades, strats }) {
-  if (!trades.length) return (
-    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '64px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 14 }}>
-      No trades logged yet.
+  const [mockFilter, setMockFilter] = useState('all')
+
+  const filteredTrades = trades.filter(t => {
+    if (mockFilter === 'mock') return !!t.mock
+    if (mockFilter === 'real') return !t.mock
+    return true
+  })
+
+  if (!filteredTrades.length) return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <MockToggle value={mockFilter} onChange={setMockFilter} />
+      </div>
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '64px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 14 }}>
+        {trades.length === 0 ? 'No trades logged yet.' : 'No trades match this filter.'}
+      </div>
     </div>
   )
 
-  const wins      = trades.filter(t => t.outcome === 'win').length
-  const losses    = trades.filter(t => t.outcome === 'loss').length
-  const totalPnl  = trades.reduce((a, t) => a + (t.pnl || 0), 0)
-  const wr        = trades.length ? (wins / trades.length * 100).toFixed(1) : '0'
-  const avgWin    = wins   ? trades.filter(t => t.outcome === 'win').reduce((a, t) => a + (t.pnl || 0), 0) / wins : 0
-  const avgLoss   = losses ? Math.abs(trades.filter(t => t.outcome === 'loss').reduce((a, t) => a + (t.pnl || 0), 0) / losses) : 0
+  const wins      = filteredTrades.filter(t => t.outcome === 'win').length
+  const losses    = filteredTrades.filter(t => t.outcome === 'loss').length
+  const totalPnl  = filteredTrades.reduce((a, t) => a + (t.pnl || 0), 0)
+  const wr        = filteredTrades.length ? (wins / filteredTrades.length * 100).toFixed(1) : '0'
+  const avgWin    = wins   ? filteredTrades.filter(t => t.outcome === 'win').reduce((a, t) => a + (t.pnl || 0), 0) / wins : 0
+  const avgLoss   = losses ? Math.abs(filteredTrades.filter(t => t.outcome === 'loss').reduce((a, t) => a + (t.pnl || 0), 0) / losses) : 0
   const pf        = avgLoss > 0 ? (avgWin * wins / (avgLoss * losses)).toFixed(2) : '—'
-  const largestW  = Math.max(...trades.filter(t => t.pnl > 0).map(t => t.pnl), 0)
-  const largestL  = Math.min(...trades.filter(t => t.pnl < 0).map(t => t.pnl), 0)
-  const expectancy = trades.length ? (totalPnl / trades.length).toFixed(2) : '0'
+  const largestW  = Math.max(...filteredTrades.filter(t => t.pnl > 0).map(t => t.pnl), 0)
+  const largestL  = Math.min(...filteredTrades.filter(t => t.pnl < 0).map(t => t.pnl), 0)
+  const expectancy = filteredTrades.length ? (totalPnl / filteredTrades.length).toFixed(2) : '0'
 
   const pnlColor = totalPnl >= 0 ? 'var(--green)' : 'var(--red)'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Mock filter toggle */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+        <MockToggle value={mockFilter} onChange={setMockFilter} />
+      </div>
       {/* Summary cards */}
       <div style={{ display: 'flex', gap: 16 }}>
         <SummaryCard label="Total PnL"     value={`${totalPnl >= 0 ? '+' : ''}₹${fmt(totalPnl)}`} accent={pnlColor}/>
         <SummaryCard label="Win Rate"      value={`${wr}%`}/>
         <SummaryCard label="Profit Factor" value={pf}/>
-        <SummaryCard label="Total Trades"  value={trades.length}/>
+        <SummaryCard label="Total Trades"  value={filteredTrades.length}/>
       </div>
 
       {/* Equity curve + Donut */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16 }}>
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24 }}>
           <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', margin: '0 0 20px' }}>Equity Curve</h3>
-          <EquityCurve trades={trades}/>
+          <EquityCurve trades={filteredTrades}/>
         </div>
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
           <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', margin: '0 0 24px', alignSelf: 'flex-start' }}>Win / Loss Ratio</h3>
@@ -229,7 +263,7 @@ export default function StatsView({ trades, strats }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16 }}>
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24 }}>
           <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', margin: '0 0 20px' }}>PnL by Strategy</h3>
-          <PnlByStrategy trades={trades} strats={strats}/>
+          <PnlByStrategy trades={filteredTrades} strats={strats}/>
         </div>
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24 }}>
           <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', margin: '0 0 20px' }}>Advanced Metrics</h3>
