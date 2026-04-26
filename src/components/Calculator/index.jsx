@@ -25,8 +25,7 @@ import StraddleStrangleComparator from "./StraddleStrangleComparator";
 import BullCallRatioCalc          from "./BullCallRatioCalc";
 import CandleStrengthCalc        from "./CandleStrengthCalc";
 import ClimacticCandleCalc       from "./ClimacticCandleCalc";
-import TrailingSLCalc            from "./TrailingSLCalc";
-
+import TrailingSLCalc            from "./TrailingSLCalc";import BrokerageCalc             from "./BrokerageCalc"
 // ─── Calculator registry ──────────────────────────────────────────
 const CALCULATORS = [
   { id: "position",        label: "Position Size",          component: PositionSizeCalc },
@@ -54,6 +53,7 @@ const CALCULATORS = [
   { id: "bull-call-ratio",         label: "Bull Call Ratio Spread",  component: BullCallRatioCalc },
   { id: "candle-strength",         label: "🕯 Candle Strength",         component: CandleStrengthCalc },
   { id: "climactic-candle",        label: "🌋 Climactic Candle",         component: ClimacticCandleCalc },
+  { id: "brokerage",               label: "💸 Brokerage Calculator",     component: BrokerageCalc },
 ];
 
 // ─── Per-calculator metadata — also exported for the Strategy Playbook ───

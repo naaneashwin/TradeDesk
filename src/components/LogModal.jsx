@@ -1,7 +1,8 @@
 import React from 'react';
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Modal, uid } from './ui'
 import { getCustomExitStrategies, addCustomExitStrategy } from '../lib/db'
+import { calcBrokerage, TRADE_TYPE_LABELS } from '../lib/brokerage'
 
 function SymbolSearch({ value, onChange }) {
   const [query,   setQuery]   = useState(value)
@@ -144,7 +145,10 @@ export default function LogModal({ strategy, onSave, onUpdate, onClose, variant,
     entryPrice:    isEdit ? String(editTrade.entryPrice) : '',
     stopLoss:      isEdit ? (editTrade.initialSl != null ? String(editTrade.initialSl) : '') : '',
     qty:           isEdit ? String(editTrade.qty)        : '',
+    tradeType:     isEdit ? (editTrade.tradeType  ?? 'eq_delivery') : 'eq_delivery',
+    exchange:      isEdit ? (editTrade.exchange   ?? 'NSE')         : 'NSE',
     commission:    isEdit ? (editTrade.commission != null ? String(editTrade.commission) : '') : '',
+    commissionAuto: true, // auto-fill from brokerage calc unless user edits manually
     screenshotUrl: isEdit ? (editTrade.screenshotUrl ?? '') : '',
     planThesis:    isEdit ? (editTrade.planThesis  ?? '') : (prefill?.planThesis ?? ''),
     planTarget:    isEdit ? (editTrade.planTarget  != null ? String(editTrade.planTarget) : '') : (prefill?.planTarget != null ? String(prefill.planTarget) : ''),
@@ -201,6 +205,25 @@ export default function LogModal({ strategy, onSave, onUpdate, onClose, variant,
     ? Math.round((pnlPerShare / initialRisk) * 100) / 100
     : null
 
+  // Auto brokerage: compute from last filled exit price
+  const lastExitPrice = exitsCalc.filter(e => e.exitPrice && e.qty).at(-1)?.exitPrice
+    ?? (exits.at(-1)?.exitPrice ? parseFloat(exits.at(-1).exitPrice) : 0)
+  const brokerageResult = useMemo(() => calcBrokerage({
+    tradeType:  form.tradeType,
+    exchange:   form.exchange,
+    entryPrice,
+    exitPrice:  lastExitPrice || entryPrice, // fallback to entry if no exit yet
+    qty:        entryQty,
+  }), [form.tradeType, form.exchange, entryPrice, lastExitPrice, entryQty])
+
+  // Auto-fill commission when brokerage changes (unless user manually overrode it)
+  useEffect(() => {
+    if (!form.commissionAuto) return
+    if (brokerageResult && entryPrice > 0 && entryQty > 0) {
+      setForm(p => ({ ...p, commission: String(brokerageResult.total) }))
+    }
+  }, [brokerageResult, entryPrice, entryQty, form.commissionAuto])
+
   const buildPayload = () => {
     const filledExits = exitsCalc.filter(e => e.exitPrice && e.qty)
     return {
@@ -225,6 +248,8 @@ export default function LogModal({ strategy, onSave, onUpdate, onClose, variant,
       planThesis:     form.planThesis.trim()       || null,
       planTarget:     parseFloat(form.planTarget)  || null,
       planStop:       parseFloat(form.planStop)    || null,
+      tradeType:      form.tradeType || null,
+      exchange:       form.exchange  || null,
       exits: filledExits.map(e => ({
         id:           e.id,
         exitDate:     e.exitDate || form.date,
@@ -444,9 +469,80 @@ export default function LogModal({ strategy, onSave, onUpdate, onClose, variant,
 
       {/* ── Trade Details ─────────────────────────────────── */}
       <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Trade Details</p>
+
+      {/* Trade type + Exchange */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 14, marginBottom: 14 }}>
+        <Field label="Trade Type">
+          <select className="t-inp" value={form.tradeType} onChange={e => fEntry('tradeType', e.target.value)}>
+            {Object.entries(TRADE_TYPE_LABELS).map(([id, label]) => (
+              <option key={id} value={id}>{label}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Exchange">
+          <div style={{ display: 'flex', gap: 6, height: 38, alignItems: 'center' }}>
+            {['NSE', 'BSE'].map(ex => {
+              const active = form.exchange === ex
+              return (
+                <button key={ex} type="button" onClick={() => fEntry('exchange', ex)}
+                  style={{ padding: '6px 14px', borderRadius: 7, fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer',
+                    border: `1px solid ${active ? '#3b82f6' : 'var(--border)'}`,
+                    background: active ? 'rgba(59,130,246,0.1)' : 'var(--surface-2)',
+                    color: active ? '#3b82f6' : 'var(--text-2)', fontFamily: 'Inter, sans-serif' }}>
+                  {ex}
+                </button>
+              )
+            })}
+          </div>
+        </Field>
+      </div>
+
+      {/* Brokerage breakdown (auto-calculated) */}
+      {brokerageResult && entryPrice > 0 && entryQty > 0 && (
+        <div style={{ background: 'rgba(220,38,38,0.04)', border: '1px solid rgba(220,38,38,0.15)', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+            Estimated Charges
+            <span style={{ marginLeft: 8, textTransform: 'none', fontWeight: 500, color: 'var(--text-3)' }}>({TRADE_TYPE_LABELS[form.tradeType]} · {form.exchange})</span>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 20px' }}>
+            {[
+              ['Brokerage', brokerageResult.brokerage],
+              ['STT/CTT',   brokerageResult.stt],
+              ['Txn Charges', brokerageResult.txnCharges],
+              ['SEBI',      brokerageResult.sebi],
+              ['Stamp',     brokerageResult.stamp],
+              ['GST',       brokerageResult.gst],
+            ].map(([label, val]) => (
+              <span key={label} style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                {label}: <span style={{ fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-2)', fontWeight: 600 }}>₹{val.toFixed(2)}</span>
+              </span>
+            ))}
+          </div>
+          <div style={{ marginTop: 8, fontSize: 13, fontWeight: 700, color: 'var(--red)', fontFamily: 'JetBrains Mono, monospace' }}>
+            Total: ₹{brokerageResult.total.toFixed(2)}
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 20 }}>
-        <Field label="Commission / Brokerage (₹)">
-          <input type="number" className="t-inp font-mono" value={form.commission} onChange={e => fEntry('commission', e.target.value)} placeholder="0.00"/>
+        <Field label={`Commission / Brokerage (₹)${form.commissionAuto ? ' — auto' : ' — manual'}`}>
+          <div style={{ position: 'relative' }}>
+            <input type="number" className="t-inp font-mono"
+              value={form.commission}
+              onChange={e => setForm(p => ({ ...p, commission: e.target.value, commissionAuto: false }))}
+              placeholder="0.00"
+              style={{ paddingRight: form.commissionAuto ? 54 : 12 }}
+            />
+            {form.commissionAuto && (
+              <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 9, fontWeight: 700, color: '#3b82f6', background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 4, padding: '1px 5px', letterSpacing: '0.04em', pointerEvents: 'none' }}>AUTO</span>
+            )}
+          </div>
+          {!form.commissionAuto && (
+            <button type="button" onClick={() => setForm(p => ({ ...p, commissionAuto: true }))}
+              style={{ marginTop: 4, fontSize: 10, color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
+              Reset to auto
+            </button>
+          )}
         </Field>
         <Field label="Screenshot URL">
           <input type="url" className="t-inp" value={form.screenshotUrl} onChange={e => fEntry('screenshotUrl', e.target.value)} placeholder="https://…"/>
