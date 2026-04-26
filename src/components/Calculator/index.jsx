@@ -25,10 +25,12 @@ import StraddleStrangleComparator from "./StraddleStrangleComparator";
 import BullCallRatioCalc          from "./BullCallRatioCalc";
 import CandleStrengthCalc        from "./CandleStrengthCalc";
 import ClimacticCandleCalc       from "./ClimacticCandleCalc";
+import TrailingSLCalc            from "./TrailingSLCalc";
 
 // ─── Calculator registry ──────────────────────────────────────────
 const CALCULATORS = [
   { id: "position",        label: "Position Size",          component: PositionSizeCalc },
+  { id: "trailing-sl",     label: "Trailing Stop Loss",      component: TrailingSLCalc },
   { id: "call-breakeven",  label: "Long Call",              component: CallBreakEvenCalc },
   { id: "put-breakeven",   label: "Long Put",               component: PutBreakEvenCalc },
   { id: "short-call",      label: "Short Call",             component: ShortCallCalc },
@@ -71,6 +73,23 @@ export const CALC_META = {
       { name: "Risk Per Trade %",        desc: "The % of your total portfolio you can tolerate losing if stop-loss is hit. Typically 0.5–2%." },
       { name: "Entry Price",             desc: "The price at which you plan to enter the position." },
       { name: "Stop Loss Price",         desc: "Your hard exit price if the trade moves against you. Below entry for Long, above entry for Short." },
+    ],
+  },
+  "trailing-sl": {
+    direction: "selectable",
+    outlook: null,
+    whenToUse: "You are already in a position and want to know where to set your trailing stop loss based on the current ATR, so that you protect profits without getting shaken out by normal volatility.",
+    risk: "Defined — risk is capped at the distance between your entry and the trailing stop at the time you are stopped out.",
+    reward: "Unlimited — the trail moves in your favour as price rises, locking in progressively more profit.",
+    summary: "Calculates a dynamic stop loss that follows the price at a fixed ATR multiple (default 1.5×). As price moves in your favour the trail moves with it — but never backwards.",
+    howItWorks: "The ATR buffer is computed as multiplier × ATR(14). For a long trade, subtract this from the current price to get the trail level. Update the stop each time the price makes a new high — the stop only ever moves up for longs, never down.",
+    formula: "ATR Buffer  = Multiplier × ATR(14)\nTrail SL (Long)  = Current Price − ATR Buffer\nTrail SL (Short) = Current Price + ATR Buffer",
+    fields: [
+      { name: "Entry Price",    desc: "The price at which you entered the position." },
+      { name: "Current Price",  desc: "The latest market price — the trail is calculated from here." },
+      { name: "ATR (14-period)", desc: "Average True Range over 14 periods. Measures recent volatility of the instrument." },
+      { name: "Multiplier",     desc: "How many ATRs of breathing room to give the trade. 1.5× is the default — increase for volatile instruments, decrease to protect profits more aggressively." },
+      { name: "Quantity",       desc: "Number of shares/units held — used to compute rupee P&L figures." },
     ],
   },
   "candle-strength": {
@@ -548,6 +567,127 @@ function InfoPanel({ calcId, direction, onDirectionChange }) {
   );
 }
 
+// ─── Calculator grouped picker ────────────────────────────────────
+const CALC_GROUPS = [
+  {
+    id: 'basics',
+    label: 'Basics',
+    icon: '⚖',
+    calcs: ['position', 'trailing-sl'],
+  },
+  {
+    id: 'single',
+    label: 'Single Leg',
+    icon: '📌',
+    calcs: ['call-breakeven', 'put-breakeven', 'short-call', 'short-put'],
+  },
+  {
+    id: 'strangle',
+    label: 'Straddle / Strangle',
+    icon: '🔀',
+    calcs: ['strangle', 'straddle', 'short-strangle', 'short-straddle', 'compare'],
+  },
+  {
+    id: 'spreads',
+    label: 'Spreads',
+    icon: '↔',
+    calcs: ['bull-spread', 'bear-spread', 'bear-call-spread', 'bull-put-spread', 'bull-call-ratio'],
+  },
+  {
+    id: 'butterfly',
+    label: 'Butterfly',
+    icon: '🦋',
+    calcs: ['long-call-butterfly', 'long-put-butterfly', 'short-call-butterfly', 'short-put-butterfly'],
+  },
+  {
+    id: 'condor',
+    label: 'Condor',
+    icon: '🦅',
+    calcs: ['condor', 'long-iron-condor', 'short-iron-condor'],
+  },
+  {
+    id: 'candle',
+    label: 'Candle',
+    icon: '🕯',
+    calcs: ['candle-strength', 'climactic-candle'],
+  },
+]
+
+// Map id → CALCULATORS entry for quick lookup
+const CALC_BY_ID = Object.fromEntries(CALCULATORS.map(c => [c.id, c]))
+
+function CalcPicker({ selected, onSelect }) {
+  // Determine initial group from selected calc
+  const initGroup = CALC_GROUPS.find(g => g.calcs.includes(selected))?.id ?? CALC_GROUPS[0].id
+  const [activeGroup, setActiveGroup] = useState(initGroup)
+
+  const group = CALC_GROUPS.find(g => g.id === activeGroup)
+
+  return (
+    <div style={{ marginBottom: 24 }}>
+      {/* Category tab bar */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+        {CALC_GROUPS.map(g => {
+          const isActive = g.id === activeGroup
+          const hasSelected = g.calcs.includes(selected)
+          return (
+            <button
+              key={g.id}
+              onClick={() => setActiveGroup(g.id)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '6px 14px', borderRadius: 20, border: '1px solid',
+                fontSize: 12, fontWeight: isActive ? 700 : 500,
+                cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                background: isActive ? 'var(--green)' : hasSelected && !isActive ? 'rgba(45,122,95,0.08)' : 'var(--surface-2)',
+                color: isActive ? '#fff' : hasSelected && !isActive ? 'var(--green)' : 'var(--text-2)',
+                borderColor: isActive ? 'var(--green)' : hasSelected && !isActive ? 'rgba(45,122,95,0.4)' : 'var(--border)',
+                transition: 'all 0.15s',
+              }}
+            >
+              <span>{g.icon}</span>
+              <span>{g.label}</span>
+              {hasSelected && !isActive && (
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--green)', flexShrink: 0 }}/>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Strategy cards for active group */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {group.calcs.map(id => {
+          const c = CALC_BY_ID[id]
+          if (!c) return null
+          const isSelected = selected === id
+          return (
+            <button
+              key={id}
+              onClick={() => onSelect(id)}
+              style={{
+                padding: '8px 16px', borderRadius: 10, border: '1px solid',
+                fontSize: 13, fontWeight: isSelected ? 700 : 500,
+                cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                background: isSelected ? 'rgba(45,122,95,0.1)' : 'var(--surface)',
+                color: isSelected ? 'var(--green)' : 'var(--text)',
+                borderColor: isSelected ? 'var(--green)' : 'var(--border)',
+                boxShadow: isSelected ? '0 0 0 1px var(--green)' : 'none',
+                transition: 'all 0.15s',
+                whiteSpace: 'nowrap',
+              }}
+              onMouseEnter={e => { if (!isSelected) { e.currentTarget.style.borderColor = 'var(--text-3)'; e.currentTarget.style.color = 'var(--text)' } }}
+              onMouseLeave={e => { if (!isSelected) { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text)' } }}
+            >
+              {c.label}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Calculator shell ────────────────────────────────────────
 export default function Calculator() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -586,24 +726,19 @@ export default function Calculator() {
 
   return (
     <div>
-      <div style={{ marginBottom: 28, display: "flex", alignItems: "flex-end", gap: 12 }}>
-        <div>
-          <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Calculator Type</label>
-          <select value={selected} onChange={(e) => handleSelect(e.target.value)} className="t-inp" style={{ maxWidth: 260, cursor: "pointer" }}>
-            {CALCULATORS.map((c) => (
-              <option key={c.id} value={c.id}>{c.label}</option>
-            ))}
-          </select>
-        </div>
+      <div style={{ marginBottom: 4, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Calculator</div>
         <button
           onClick={handleReset}
-          style={{ padding: "9px 18px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text-2)", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "Inter, sans-serif", transition: "all 0.15s", whiteSpace: "nowrap" }}
+          style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text-2)", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "Inter, sans-serif", transition: "all 0.15s", whiteSpace: "nowrap" }}
           onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--border-2)"; e.currentTarget.style.color = "var(--text)"; }}
           onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)";   e.currentTarget.style.color = "var(--text-2)"; }}
         >
           ↺ Reset
         </button>
       </div>
+
+      <CalcPicker selected={selected} onSelect={handleSelect} />
 
       {isComparator ? (
         <SimSpotProvider key={`${selected}-${resetKey}`}><CalcComponent key={`${selected}-${resetKey}`} /></SimSpotProvider>

@@ -19,6 +19,9 @@ import {
   upsertChecklistItem,
   deleteChecklistItem,
   saveStrategyChecklist,
+  getWatchlist,
+  upsertWatchlistItem,
+  deleteWatchlistItem,
 } from "./lib/db";
 import { supabase } from "./lib/supabase";
 import Library from "./components/Library";
@@ -29,23 +32,26 @@ import Calculator from "./components/Calculator";
 import ChecklistLibrary from "./components/ChecklistLibrary";
 import Login from "./components/Login";
 import OptionStrategies from "./components/OptionStrategies";
+import Watchlist from "./components/Watchlist";
 
 const NAV_ITEMS = [
   { id: "strategies", label: "Strategies", path: "/tradedesk/strategies" },
-  { id: "checklist", label: "Checklist", path: "/tradedesk/checklist" },
-  { id: "journal", label: "Journal", path: "/tradedesk/journal" },
-  { id: "stats", label: "Stats", path: "/tradedesk/stats" },
+  { id: "checklist",  label: "Checklist",  path: "/tradedesk/checklist"  },
+  { id: "journal",    label: "Journal",    path: "/tradedesk/journal"    },
+  { id: "watchlist",  label: "Watchlist",  path: "/tradedesk/watchlist"  },
+  { id: "stats",      label: "Stats",      path: "/tradedesk/stats"      },
   { id: "calculator", label: "Calculator", path: "/tradedesk/calculator" },
-  { id: "playbook", label: "Playbook", path: "/tradedesk/playbook" },
+  { id: "playbook",   label: "Playbook",   path: "/tradedesk/playbook"   },
 ];
 
 const PAGE_TITLES = {
   strategies: "My Strategies",
-  checklist: "Checklist Library",
-  journal: "Trading Journal",
-  stats: "Statistics",
+  checklist:  "Checklist Library",
+  journal:    "Trading Journal",
+  watchlist:  "Watchlist",
+  stats:      "Statistics",
   calculator: "Calculator",
-  playbook: "Strategy Playbook",
+  playbook:   "Strategy Playbook",
 };
 
 const REQUIRED_COLS = [
@@ -191,6 +197,14 @@ function Icon({ name, size = 18, color = "currentColor", strokeWidth = 2 }) {
           <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
         </svg>
       );
+    case "watchlist":
+      return (
+        <svg {...s} viewBox="0 0 24 24" {...p}>
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+          <circle cx="12" cy="12" r="3" />
+          <line x1="19" y1="5" x2="5" y2="19" />
+        </svg>
+      );
     case "checklist":
       return (
         <svg {...s} viewBox="0 0 24 24" {...p}>
@@ -253,13 +267,16 @@ export default function App() {
   const [session, setSession] = useState(undefined); // undefined = loading, null = logged out
   const [strats, setStrats] = useState([]);
   const [trades, setTrades] = useState([]);
+  const [watchlistItems, setWatchlistItems] = useState([]);
   const [checklistItems, setChecklistItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState("idle");
   const [collapsed, setCollapsed] = useState(false);
-  const [dark, setDark] = useState(
-    () => localStorage.getItem("td-theme") === "dark",
-  );
+  const [dark, setDark] = useState(() => {
+    const saved = localStorage.getItem("td-theme")
+    if (saved) return saved === "dark"
+    return window.matchMedia("(prefers-color-scheme: dark)").matches
+  });
   const [importError, setImportError] = useState(null);
   const impRef = useRef(null);
   const loadedUserRef = useRef(null); // tracks which userId we've already loaded data for
@@ -279,10 +296,55 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // ── Auto-theme: follow OS preference if no saved override ──
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)")
+    const onChange = (e) => {
+      if (!localStorage.getItem("td-theme-manual")) setDark(e.matches)
+    }
+    mq.addEventListener("change", onChange)
+    return () => mq.removeEventListener("change", onChange)
+  }, [])
+
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
     localStorage.setItem("td-theme", dark ? "dark" : "light");
+    localStorage.setItem("td-theme-manual", "1");
   }, [dark]);
+
+  // ── Keyboard shortcuts ───────────────────────────────────────
+  useEffect(() => {
+    const h = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return
+      if (e.key === 'n' || e.key === 'N') {
+        if (tab === 'journal' || tab === 'stats') {
+          document.dispatchEvent(new CustomEvent('td:journal-log'))
+        } else if (tab === 'strategies') {
+          document.dispatchEvent(new CustomEvent('td:new-strategy'))
+        } else if (tab === 'watchlist') {
+          document.dispatchEvent(new CustomEvent('td:new-watchlist'))
+        }
+      }
+      if (e.key === 'j' || e.key === 'J') navigate('/tradedesk/journal')
+      if (e.key === 'w' || e.key === 'W') navigate('/tradedesk/watchlist')
+      if (e.key === 's' || e.key === 'S') navigate('/tradedesk/stats')
+    }
+    document.addEventListener('keydown', h)
+    return () => document.removeEventListener('keydown', h)
+  }, [tab, navigate])
+
+  // ── Watchlist → Journal pre-fill ────────────────────────────
+  useEffect(() => {
+    const h = (e) => {
+      navigate('/tradedesk/journal')
+      // Small delay so Journal mounts before we dispatch the open+prefill event
+      setTimeout(() => {
+        document.dispatchEvent(new CustomEvent('td:journal-log-prefill', { detail: e.detail }))
+      }, 50)
+    }
+    document.addEventListener('td:prefill-log', h)
+    return () => document.removeEventListener('td:prefill-log', h)
+  }, [navigate])
 
   useEffect(() => {
     if (!session) return;
@@ -290,6 +352,7 @@ export default function App() {
     // from onAuthStateChange firing after getSession returns the same user)
     if (loadedUserRef.current === session.user.id) return;
     loadedUserRef.current = session.user.id;
+
     Promise.all([getStrategies(), getTrades(), getChecklistItems()])
       .then(([sv, tv, cv]) => {
         setStrats(sv);
@@ -298,6 +361,9 @@ export default function App() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
+
+    // Watchlist fetched separately — migration may not exist yet
+    getWatchlist().then(setWatchlistItems).catch(() => {});
   }, [session]);
 
   const withSync =
@@ -371,6 +437,18 @@ export default function App() {
     await deleteTrade(id);
     setTrades((prev) => prev.filter((t) => t.id !== id));
   });
+
+  const handleUpsertWatchlistItem = withSync(async (item) => {
+    const saved = await upsertWatchlistItem(item)
+    setWatchlistItems((prev) => {
+      const i = prev.findIndex((x) => x.id === saved.id)
+      return i >= 0 ? prev.map((x) => (x.id === saved.id ? saved : x)) : [saved, ...prev]
+    })
+  })
+  const handleDeleteWatchlistItem = withSync(async (id) => {
+    await deleteWatchlistItem(id)
+    setWatchlistItems((prev) => prev.filter((x) => x.id !== id))
+  })
 
   const exportData = () => {
     const blob = new Blob([JSON.stringify({ strats, trades }, null, 2)], {
@@ -542,11 +620,12 @@ export default function App() {
 
   const navIconName = {
     strategies: "strategies",
-    checklist: "checklist",
-    journal: "journal",
-    stats: "stats",
+    checklist:  "checklist",
+    journal:    "journal",
+    watchlist:  "watchlist",
+    stats:      "stats",
     calculator: "calculator",
-    playbook: "playbook",
+    playbook:   "playbook",
   };
 
   return (
@@ -964,6 +1043,22 @@ export default function App() {
                 <Icon name="plus" size={14} color="white" /> Log Trade
               </button>
             )}
+            {tab === "watchlist" && (
+              <button
+                className="btn-green"
+                style={{
+                  padding: "8px 16px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+                onClick={() =>
+                  document.dispatchEvent(new CustomEvent("td:new-watchlist"))
+                }
+              >
+                <Icon name="plus" size={14} color="white" /> Add to Watchlist
+              </button>
+            )}
           </div>
         </header>
 
@@ -1058,6 +1153,16 @@ export default function App() {
                   onDelete={handleDeleteTrade}
                   onLogTrade={handleInsertTrade}
                   onEditTrade={handleUpdateTrade}
+                />
+              }
+            />
+            <Route
+              path="/tradedesk/watchlist"
+              element={
+                <Watchlist
+                  items={watchlistItems}
+                  onUpsert={handleUpsertWatchlistItem}
+                  onDelete={handleDeleteWatchlistItem}
                 />
               }
             />

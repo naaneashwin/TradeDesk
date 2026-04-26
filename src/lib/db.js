@@ -116,6 +116,13 @@ function rowToTrade(row) {
     notes:          row.notes,
     exits:          row.exits ?? [],
     mock:           row.mock ?? false,
+    initialSl:      row.initial_sl      != null ? Number(row.initial_sl)      : null,
+    rMult:          row.r_mult          != null ? Number(row.r_mult)          : null,
+    commission:     row.commission      != null ? Number(row.commission)      : null,
+    screenshotUrl:  row.screenshot_url  ?? null,
+    planThesis:     row.plan_thesis     ?? null,
+    planTarget:     row.plan_target     != null ? Number(row.plan_target)     : null,
+    planStop:       row.plan_stop       != null ? Number(row.plan_stop)       : null,
   }
 }
 
@@ -135,7 +142,14 @@ function tradeToRow(t) {
     pnl:             t.pnl,
     notes:           t.notes,
     exits:           t.exits ?? [],
-    mock:            t.mock ?? false,
+    mock:            t.mock     ?? false,
+    initial_sl:      t.initialSl     ?? null,
+    r_mult:          t.rMult         ?? null,
+    commission:      t.commission    ?? null,
+    screenshot_url:  t.screenshotUrl ?? null,
+    plan_thesis:     t.planThesis    ?? null,
+    plan_target:     t.planTarget    ?? null,
+    plan_stop:       t.planStop      ?? null,
   }
 }
 
@@ -356,7 +370,49 @@ export async function getUserPreferences() {
   }
 }
 
-export async function upsertUserPreferences({ totalInvestment, capitalPerTrade }) {
+export async function getCustomExitStrategies() {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const { data, error } = await supabase
+    .from('user_preferences')
+    .select('custom_exit_strategies')
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (error) throw error
+  return Array.isArray(data?.custom_exit_strategies) ? data.custom_exit_strategies : []
+}
+
+export async function addCustomExitStrategy(label) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+
+  // Upsert the row first (in case preferences row doesn't exist yet), then append via jsonb concat
+  await supabase
+    .from('user_preferences')
+    .upsert({ user_id: user.id, custom_exit_strategies: [] }, { onConflict: 'user_id', ignoreDuplicates: true })
+
+  const { data, error: fetchErr } = await supabase
+    .from('user_preferences')
+    .select('custom_exit_strategies')
+    .eq('user_id', user.id)
+    .single()
+
+  if (fetchErr) throw fetchErr
+
+  const existing = Array.isArray(data.custom_exit_strategies) ? data.custom_exit_strategies : []
+  if (existing.includes(label)) return // already stored
+
+  const { error } = await supabase
+    .from('user_preferences')
+    .update({ custom_exit_strategies: [...existing, label], updated_at: new Date().toISOString() })
+    .eq('user_id', user.id)
+
+  if (error) throw error
+}
+
+export async function upsertUserPreferences({ totalInvestment, capitalPerTrade, accountSize, dailyLossLimit }) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
 
@@ -367,12 +423,91 @@ export async function upsertUserPreferences({ totalInvestment, capitalPerTrade }
         user_id:           user.id,
         total_investment:  totalInvestment  ? parseFloat(totalInvestment)  : null,
         capital_per_trade: capitalPerTrade  ? parseFloat(capitalPerTrade)  : null,
+        account_size:      accountSize      ? parseFloat(accountSize)      : null,
+        daily_loss_limit:  dailyLossLimit   ? parseFloat(dailyLossLimit)   : null,
         updated_at:        new Date().toISOString(),
       },
       { onConflict: 'user_id' }
     )
 
   if (error) throw error
+}
+
+export async function getUserPreferencesFull() {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return {}
+
+  const { data, error } = await supabase
+    .from('user_preferences')
+    .select('total_investment, capital_per_trade, account_size, daily_loss_limit')
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (error) throw error
+  if (!data) return {}
+  return {
+    totalInvestment: data.total_investment  != null ? String(data.total_investment)  : '',
+    capitalPerTrade: data.capital_per_trade != null ? String(data.capital_per_trade) : '',
+    accountSize:     data.account_size      != null ? String(data.account_size)      : '',
+    dailyLossLimit:  data.daily_loss_limit  != null ? String(data.daily_loss_limit)  : '',
+  }
+}
+
+// ── Watchlist ─────────────────────────────────────────────────
+
+export async function getWatchlist() {
+  const { data, error } = await supabase
+    .from('watchlist')
+    .select('*')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data.map(rowToWatchlistItem)
+}
+
+export async function upsertWatchlistItem(item) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+  const payload = {
+    user_id:     user.id,
+    symbol:      item.symbol.toUpperCase().trim(),
+    reason:      item.reason      ?? null,
+    entry_notes: item.entryNotes  ?? null,
+    target:      item.target      ?? null,
+    stop:        item.stop        ?? null,
+    tags:        item.tags        ?? [],
+    status:      item.status      ?? 'watching',
+    added_at:    item.addedAt     ?? new Date().toISOString().slice(0, 10),
+    updated_at:  new Date().toISOString(),
+  }
+  if (item.id) payload.id = item.id
+
+  const { data, error } = await supabase
+    .from('watchlist')
+    .upsert(payload, { onConflict: 'id' })
+    .select()
+    .single()
+  if (error) throw error
+  return rowToWatchlistItem(data)
+}
+
+export async function deleteWatchlistItem(id) {
+  const { error } = await supabase.from('watchlist').delete().eq('id', id)
+  if (error) throw error
+}
+
+function rowToWatchlistItem(row) {
+  return {
+    id:          row.id,
+    symbol:      row.symbol,
+    reason:      row.reason      ?? '',
+    entryNotes:  row.entry_notes ?? '',
+    target:      row.target      != null ? Number(row.target) : null,
+    stop:        row.stop        != null ? Number(row.stop)   : null,
+    tags:        row.tags        ?? [],
+    status:      row.status      ?? 'watching',
+    addedAt:     row.added_at,
+    createdAt:   row.created_at,
+  }
 }
 
 // ── Scanners ─────────────────────────────────────────────────

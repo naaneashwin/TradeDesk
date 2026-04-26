@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { fmt } from './ui'
 
 function MockToggle({ value, onChange }) {
@@ -30,35 +30,45 @@ function EquityCurve({ trades }) {
   const sorted = [...trades].sort((a, b) => new Date(a.date) - new Date(b.date))
   if (sorted.length < 2) return <p style={{ color: 'var(--text-3)', fontSize: 13, padding: 20 }}>Not enough data.</p>
 
-  // Build cumulative equity
+  // Build cumulative equity + drawdown
   const points = sorted.reduce((acc, t) => {
     const prev = acc[acc.length - 1]?.y ?? 0
-    acc.push({ date: t.date, y: prev + (t.pnl || 0) })
+    const y    = prev + (t.pnl || 0)
+    acc.push({ date: t.date, y })
     return acc
   }, [])
+
+  const peak = points.reduce((acc, p) => {
+    const prevPeak = acc[acc.length - 1]
+    acc.push(Math.max(prevPeak, p.y))
+    return acc
+  }, [points[0]?.y ?? 0]).slice(1)
 
   const W = 560, H = 220, PAD = { top: 16, right: 16, bottom: 40, left: 56 }
   const iW = W - PAD.left - PAD.right
   const iH = H - PAD.top - PAD.bottom
 
-  const minY = Math.min(0, ...points.map(p => p.y))
-  const maxY = Math.max(...points.map(p => p.y))
+  const allY = [...points.map(p => p.y), ...peak]
+  const minY = Math.min(0, ...allY)
+  const maxY = Math.max(...allY)
   const rangeY = maxY - minY || 1
 
   const xScale = i => PAD.left + (i / (points.length - 1)) * iW
   const yScale = v => PAD.top + iH - ((v - minY) / rangeY) * iH
 
-  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${xScale(i).toFixed(1)},${yScale(p.y).toFixed(1)}`).join(' ')
+  const pathD   = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${xScale(i).toFixed(1)},${yScale(p.y).toFixed(1)}`).join(' ')
+  const peakD   = peak.map((v, i) => `${i === 0 ? 'M' : 'L'}${xScale(i).toFixed(1)},${yScale(v).toFixed(1)}`).join(' ')
+  const zero    = yScale(Math.max(0, minY))
 
-  // Y grid lines
+  // Drawdown fill polygon between peak line and equity line
+  const ddFill = [
+    ...peak.map((v, i) => `${i === 0 ? 'M' : 'L'}${xScale(i).toFixed(1)},${yScale(v).toFixed(1)}`),
+    ...[...points].reverse().map((p, i, arr) => `${i === 0 ? 'L' : 'L'}${xScale(arr.length - 1 - i).toFixed(1)},${yScale(p.y).toFixed(1)}`),
+    'Z'
+  ].join(' ')
+
   const yTicks = 4
   const yLabels = Array.from({ length: yTicks + 1 }, (_, i) => minY + (rangeY / yTicks) * i)
-
-  // X date labels (up to 5)
-  const xStep = Math.max(1, Math.floor(points.length / 5))
-  const xLabels = points.filter((_, i) => i % xStep === 0 || i === points.length - 1)
-    .map((p, _, arr) => p)
-    .slice(0, 6)
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', overflow: 'visible' }}>
@@ -67,8 +77,8 @@ function EquityCurve({ trades }) {
         const y = yScale(v)
         return (
           <g key={i}>
-            <line x1={PAD.left} y1={y} x2={W - PAD.right} y2={y} stroke="#e5e7eb" strokeWidth="1" strokeDasharray="4 4"/>
-            <text x={PAD.left - 6} y={y + 4} textAnchor="end" fontSize="11" fill="#9ca3af">₹{Math.round(v)}</text>
+            <line x1={PAD.left} y1={y} x2={W - PAD.right} y2={y} stroke="var(--border)" strokeWidth="1" strokeDasharray="4 4"/>
+            <text x={PAD.left - 6} y={y + 4} textAnchor="end" fontSize="11" fill="var(--text-3)">₹{Math.round(v)}</text>
           </g>
         )
       })}
@@ -77,15 +87,139 @@ function EquityCurve({ trades }) {
         const step = Math.max(1, Math.floor(points.length / 5))
         return i % step === 0 || i === points.length - 1
       }).map((p, i) => (
-        <text key={i} x={xScale(points.indexOf(p))} y={H - 8} textAnchor="middle" fontSize="11" fill="#9ca3af">{p.date}</text>
+        <text key={i} x={xScale(points.indexOf(p))} y={H - 8} textAnchor="middle" fontSize="11" fill="var(--text-3)">{p.date.slice(5)}</text>
       ))}
-      {/* Line */}
+      {/* Zero baseline */}
+      {minY < 0 && <line x1={PAD.left} y1={zero} x2={W - PAD.right} y2={zero} stroke="var(--border)" strokeWidth="1.5"/>}
+      {/* Drawdown shading */}
+      <path d={ddFill} fill="rgba(220,38,38,0.10)" />
+      {/* Peak line */}
+      <path d={peakD} fill="none" stroke="rgba(220,38,38,0.35)" strokeWidth="1.5" strokeDasharray="4 3"/>
+      {/* Equity line */}
       <path d={pathD} fill="none" stroke="var(--green)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round"/>
-      {/* Dots */}
-      {points.map((p, i) => (
+      {/* Dots (only if few points) */}
+      {points.length <= 20 && points.map((p, i) => (
         <circle key={i} cx={xScale(i)} cy={yScale(p.y)} r="4" fill="var(--green)" stroke="white" strokeWidth="2"/>
       ))}
     </svg>
+  )
+}
+
+function CalendarHeatmap({ trades }) {
+  const byDate = useMemo(() => {
+    const map = {}
+    for (const t of trades) {
+      if (!t.date) continue
+      map[t.date] = (map[t.date] || 0) + (t.pnl || 0)
+    }
+    return map
+  }, [trades])
+
+  if (!Object.keys(byDate).length) return <p style={{ color: 'var(--text-3)', fontSize: 13 }}>No data.</p>
+
+  const dates = Object.keys(byDate).sort()
+  const firstDate = new Date(dates[0])
+  const lastDate  = new Date(dates[dates.length - 1])
+
+  // Build a grid of weeks
+  const weeks = []
+  const cur = new Date(firstDate)
+  cur.setDate(cur.getDate() - cur.getDay()) // back to Sunday
+  while (cur <= lastDate) {
+    const week = []
+    for (let d = 0; d < 7; d++) {
+      const iso = cur.toISOString().slice(0, 10)
+      week.push({ date: iso, pnl: byDate[iso] ?? null, inRange: cur >= firstDate && cur <= lastDate })
+      cur.setDate(cur.getDate() + 1)
+    }
+    weeks.push(week)
+  }
+
+  const maxAbs = Math.max(...Object.values(byDate).map(Math.abs), 1)
+  const CELL = 14, GAP = 3, LABEL_W = 24
+  const W = weeks.length * (CELL + GAP) + LABEL_W
+  const H = 7 * (CELL + GAP) + 24
+
+  const color = (pnl) => {
+    if (pnl === null) return 'var(--surface-2)'
+    if (pnl === 0) return 'var(--border)'
+    const intensity = Math.min(Math.abs(pnl) / maxAbs, 1)
+    return pnl > 0
+      ? `rgba(45,122,95,${0.15 + intensity * 0.75})`
+      : `rgba(220,38,38,${0.15 + intensity * 0.75})`
+  }
+
+  const DAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
+
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ minWidth: Math.min(W, 600), height: 'auto' }}>
+        {/* Day labels */}
+        {DAY_LABELS.map((l, d) => (
+          <text key={d} x={LABEL_W - 4} y={d * (CELL + GAP) + CELL - 2 + 20} textAnchor="end" fontSize="9" fill="var(--text-3)">{l}</text>
+        ))}
+        {/* Month labels above first week of each month */}
+        {weeks.map((week, wi) => {
+          const first = week.find(d => d.inRange)
+          if (!first) return null
+          const d = new Date(first.date)
+          if (d.getDate() <= 7 && wi > 0) {
+            return <text key={wi} x={LABEL_W + wi * (CELL + GAP) + CELL / 2} y={12} textAnchor="middle" fontSize="9" fill="var(--text-3)">{d.toLocaleString('default', { month: 'short' })}</text>
+          }
+          return null
+        })}
+        {/* Cells */}
+        {weeks.map((week, wi) =>
+          week.map((day, di) => (
+            <rect key={`${wi}-${di}`}
+              x={LABEL_W + wi * (CELL + GAP)}
+              y={di * (CELL + GAP) + 20}
+              width={CELL} height={CELL}
+              rx={2}
+              fill={day.inRange ? color(day.pnl) : 'transparent'}
+            >
+              {day.pnl !== null && <title>{day.date}: ₹{day.pnl?.toFixed(0)}</title>}
+            </rect>
+          ))
+        )}
+      </svg>
+    </div>
+  )
+}
+
+function StrategyPerformance({ trades, strats }) {
+  const data = useMemo(() => strats.map(st => {
+    const ts = trades.filter(t => t.strategyId === st.id)
+    if (!ts.length) return null
+    const wins   = ts.filter(t => t.outcome === 'win').length
+    const losses = ts.filter(t => t.outcome === 'loss').length
+    const pnl    = ts.reduce((a, t) => a + (t.pnl || 0), 0)
+    const wr     = ts.length ? Math.round(wins / ts.length * 100) : 0
+    const rTrades = ts.filter(t => t.rMult != null)
+    const avgR   = rTrades.length ? rTrades.reduce((a, t) => a + t.rMult, 0) / rTrades.length : null
+    return { id: st.id, name: st.name, count: ts.length, wins, losses, pnl, wr, avgR }
+  }).filter(Boolean), [trades, strats])
+
+  if (!data.length) return <p style={{ color: 'var(--text-3)', fontSize: 13 }}>No data.</p>
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 60px 60px 80px 80px', gap: 8, padding: '6px 10px', fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+        <span>Strategy</span><span style={{ textAlign: 'center' }}>Trades</span><span style={{ textAlign: 'center' }}>Win%</span><span style={{ textAlign: 'center' }}>Avg R</span><span style={{ textAlign: 'right' }}>PnL</span><span/>
+      </div>
+      {data.map(d => (
+        <div key={d.id} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 60px 60px 80px 80px', gap: 8, padding: '10px 10px', fontSize: 13, borderRadius: 8, background: 'var(--surface-2)', alignItems: 'center' }}>
+          <span style={{ fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</span>
+          <span style={{ textAlign: 'center', color: 'var(--text-2)', fontFamily: 'JetBrains Mono, monospace' }}>{d.count}</span>
+          <span style={{ textAlign: 'center', fontFamily: 'JetBrains Mono, monospace', color: d.wr >= 50 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>{d.wr}%</span>
+          <span style={{ textAlign: 'center', fontFamily: 'JetBrains Mono, monospace', color: d.avgR == null ? 'var(--text-3)' : d.avgR > 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>{d.avgR == null ? '—' : `${d.avgR > 0 ? '+' : ''}${d.avgR.toFixed(1)}R`}</span>
+          <span style={{ textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, color: d.pnl > 0 ? 'var(--green)' : d.pnl < 0 ? 'var(--red)' : 'var(--text-2)' }}>{d.pnl >= 0 ? '+' : ''}₹{fmt(d.pnl)}</span>
+          <div style={{ height: 6, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${d.wr}%`, background: d.wr >= 50 ? 'var(--green)' : 'var(--red)', borderRadius: 3 }}/>
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -145,13 +279,6 @@ function PnlByStrategy({ trades, strats }) {
   const zeroX   = LABEL_W + chartW / 2
   const H       = data.length * (BAR_H + GAP) + 32
 
-  const fmt = v => {
-    const abs = Math.abs(v)
-    if (abs >= 100000) return `${(v / 100000).toFixed(1)}L`
-    if (abs >= 1000)   return `${(v / 1000).toFixed(1)}k`
-    return String(Math.round(v))
-  }
-
   // Only show 3 tick labels: left, center (0), right — avoids edge overflow
   const ticks = [-maxAbs, 0, maxAbs]
 
@@ -162,8 +289,8 @@ function PnlByStrategy({ trades, strats }) {
         const x = LABEL_W + ((v + maxAbs) / (2 * maxAbs)) * chartW
         return (
           <g key={i}>
-            <line x1={x} y1={0} x2={x} y2={H - 20} stroke="#e5e7eb" strokeWidth="1" strokeDasharray="4 3"/>
-            <text x={x} y={H - 4} textAnchor="middle" fontSize="10" fill="#9ca3af">
+            <line x1={x} y1={0} x2={x} y2={H - 20} stroke="var(--border)" strokeWidth="1" strokeDasharray="4 3"/>
+            <text x={x} y={H - 4} textAnchor="middle" fontSize="10" fill="var(--text-3)">
               {v === 0 ? '0' : `₹${fmt(v)}`}
             </text>
           </g>
@@ -175,21 +302,17 @@ function PnlByStrategy({ trades, strats }) {
         const barW = Math.max((Math.abs(d.pnl) / maxAbs) * (chartW / 2), 2)
         const x    = d.pnl >= 0 ? zeroX : zeroX - barW
         const isPos = d.pnl >= 0
-        // Truncate strategy name if too long
         const label = d.name.length > 14 ? d.name.slice(0, 13) + '…' : d.name
 
         return (
           <g key={d.name}>
-            {/* Strategy name */}
-            <text x={LABEL_W - 8} y={y + BAR_H / 2 + 4} textAnchor="end" fontSize="11" fill="#6b7280">{label}</text>
-            {/* Bar */}
-            <rect x={x} y={y} width={barW} height={BAR_H} rx="4" fill={isPos ? 'var(--green)' : '#ef4444'} opacity="0.85"/>
-            {/* Value label to the right of the bar area */}
+            <text x={LABEL_W - 8} y={y + BAR_H / 2 + 4} textAnchor="end" fontSize="11" fill="var(--text-3)">{label}</text>
+            <rect x={x} y={y} width={barW} height={BAR_H} rx="4" fill={isPos ? 'var(--green)' : 'var(--red)'} opacity="0.85"/>
             <text
               x={LABEL_W + chartW + PAD_R + 4}
               y={y + BAR_H / 2 + 4}
               textAnchor="start" fontSize="11" fontWeight="600"
-              fill={isPos ? '#2d7a5f' : '#dc2626'}
+              fill={isPos ? 'var(--green)' : 'var(--red)'}
             >
               {isPos ? '+' : '-'}₹{fmt(Math.abs(d.pnl))}
             </text>
@@ -197,6 +320,73 @@ function PnlByStrategy({ trades, strats }) {
         )
       })}
     </svg>
+  )
+}
+
+function WeekdayPerformance({ trades }) {
+  const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const data = useMemo(() => DAYS.map((label, di) => {
+    const ts = trades.filter(t => t.date && new Date(t.date + 'T00:00:00').getDay() === di)
+    const pnl = ts.reduce((a, t) => a + (t.pnl || 0), 0)
+    const wins = ts.filter(t => t.outcome === 'win').length
+    return { label, count: ts.length, pnl, wins }
+  }), [trades])
+
+  const maxAbs = Math.max(...data.map(d => Math.abs(d.pnl)), 1)
+
+  return (
+    <div style={{ display: 'flex', gap: 8 }}>
+      {data.map(d => {
+        const barH = d.count ? Math.round((Math.abs(d.pnl) / maxAbs) * 80) : 4
+        const isPos = d.pnl >= 0
+        return (
+          <div key={d.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: d.count ? (isPos ? 'var(--green)' : 'var(--red)') : 'var(--text-3)', fontFamily: 'JetBrains Mono, monospace' }}>
+              {d.count ? `${isPos ? '+' : ''}${Math.round(d.pnl / 1000)}k` : '—'}
+            </span>
+            <div style={{ width: '100%', height: 88, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+              <div style={{ width: '70%', height: barH, borderRadius: 4, background: d.count ? (isPos ? 'var(--green)' : 'var(--red)') : 'var(--border)', opacity: 0.8 }}/>
+            </div>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>{d.label}</span>
+            <span style={{ fontSize: 10, color: 'var(--text-3)' }}>{d.count} trades</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function VariantPerformance({ trades, strats }) {
+  const data = useMemo(() => {
+    const map = {}
+    for (const t of trades) {
+      if (!t.variant) continue
+      const st = strats.find(s => s.id === t.strategyId)
+      const key = `${st?.name ?? '?'} · ${t.variant.toUpperCase()}`
+      if (!map[key]) map[key] = { label: key, count: 0, wins: 0, pnl: 0 }
+      map[key].count++
+      if (t.outcome === 'win') map[key].wins++
+      map[key].pnl += t.pnl || 0
+    }
+    return Object.values(map).sort((a, b) => b.pnl - a.pnl)
+  }, [trades, strats])
+
+  if (!data.length) return <p style={{ color: 'var(--text-3)', fontSize: 13 }}>No variant data. Tag trades with CE/PE/etc. when logging.</p>
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {data.map(d => {
+        const wr = d.count ? Math.round(d.wins / d.count * 100) : 0
+        return (
+          <div key={d.label} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: 'var(--surface-2)', borderRadius: 8 }}>
+            <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{d.label}</span>
+            <span style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'JetBrains Mono, monospace' }}>{d.count} trades</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: wr >= 50 ? 'var(--green)' : 'var(--red)', fontFamily: 'JetBrains Mono, monospace', minWidth: 36, textAlign: 'right' }}>{wr}%</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: d.pnl >= 0 ? 'var(--green)' : 'var(--red)', fontFamily: 'JetBrains Mono, monospace', minWidth: 72, textAlign: 'right' }}>{d.pnl >= 0 ? '+' : ''}₹{fmt(d.pnl)}</span>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
@@ -223,15 +413,55 @@ export default function StatsView({ trades, strats }) {
   const wins      = filteredTrades.filter(t => t.outcome === 'win').length
   const losses    = filteredTrades.filter(t => t.outcome === 'loss').length
   const totalPnl  = filteredTrades.reduce((a, t) => a + (t.pnl || 0), 0)
+  const totalComm = filteredTrades.reduce((a, t) => a + (t.commission || 0), 0)
+  const netPnl    = totalPnl - totalComm
   const wr        = filteredTrades.length ? (wins / filteredTrades.length * 100).toFixed(1) : '0'
   const avgWin    = wins   ? filteredTrades.filter(t => t.outcome === 'win').reduce((a, t) => a + (t.pnl || 0), 0) / wins : 0
   const avgLoss   = losses ? Math.abs(filteredTrades.filter(t => t.outcome === 'loss').reduce((a, t) => a + (t.pnl || 0), 0) / losses) : 0
   const pf        = avgLoss > 0 ? (avgWin * wins / (avgLoss * losses)).toFixed(2) : '—'
   const largestW  = Math.max(...filteredTrades.filter(t => t.pnl > 0).map(t => t.pnl), 0)
   const largestL  = Math.min(...filteredTrades.filter(t => t.pnl < 0).map(t => t.pnl), 0)
-  const expectancy = filteredTrades.length ? (totalPnl / filteredTrades.length).toFixed(2) : '0'
+
+  // Max drawdown from equity curve
+  const sorted    = [...filteredTrades].sort((a, b) => new Date(a.date) - new Date(b.date))
+  let runPeak = 0, maxDD = 0, equity = 0
+  for (const t of sorted) {
+    equity  += t.pnl || 0
+    if (equity > runPeak) runPeak = equity
+    const dd = runPeak - equity
+    if (dd > maxDD) maxDD = dd
+  }
+
+  // Streaks
+  const outcomeSeq = sorted.map(t => t.outcome)
+  let curStreak = 0, curStreakType = null, maxWStreak = 0, maxLStreak = 0
+  let tempW = 0, tempL = 0
+  for (const o of outcomeSeq) {
+    if (o === 'win')  { tempW++; tempL = 0; if (tempW > maxWStreak) maxWStreak = tempW }
+    if (o === 'loss') { tempL++; tempW = 0; if (tempL > maxLStreak) maxLStreak = tempL }
+  }
+  // Current streak (from end)
+  if (outcomeSeq.length) {
+    const last = outcomeSeq[outcomeSeq.length - 1]
+    for (let i = outcomeSeq.length - 1; i >= 0; i--) {
+      if (outcomeSeq[i] === last) curStreak++; else break
+    }
+    curStreakType = last
+  }
+
+  // R-based expectancy: (Win% × Avg Win R) - (Loss% × Avg Loss R)
+  const rTrades  = filteredTrades.filter(t => t.rMult != null)
+  const rWins    = rTrades.filter(t => t.rMult > 0)
+  const rLosses  = rTrades.filter(t => t.rMult < 0)
+  const avgWinR  = rWins.length   ? rWins.reduce((a, t) => a + t.rMult, 0)            / rWins.length   : null
+  const avgLossR = rLosses.length ? Math.abs(rLosses.reduce((a, t) => a + t.rMult, 0) / rLosses.length) : null
+  const wrFrac   = rTrades.length ? rWins.length / rTrades.length : null
+  const rExpectancy = (avgWinR != null && avgLossR != null && wrFrac != null)
+    ? parseFloat((wrFrac * avgWinR - (1 - wrFrac) * avgLossR).toFixed(2))
+    : null
 
   const pnlColor = totalPnl >= 0 ? 'var(--green)' : 'var(--red)'
+  const netColor = netPnl  >= 0 ? 'var(--green)' : 'var(--red)'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -239,18 +469,30 @@ export default function StatsView({ trades, strats }) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
         <MockToggle value={mockFilter} onChange={setMockFilter} />
       </div>
-      {/* Summary cards */}
-      <div style={{ display: 'flex', gap: 16 }}>
-        <SummaryCard label="Total PnL"     value={`${totalPnl >= 0 ? '+' : ''}₹${fmt(totalPnl)}`} accent={pnlColor}/>
+
+      {/* Summary cards row 1 */}
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+        <SummaryCard label="Gross P&L"     value={`${totalPnl >= 0 ? '+' : ''}₹${fmt(totalPnl)}`} accent={pnlColor}/>
+        {totalComm > 0 && <SummaryCard label="Net P&L (after commission)" value={`${netPnl >= 0 ? '+' : ''}₹${fmt(netPnl)}`} accent={netColor}/>}
         <SummaryCard label="Win Rate"      value={`${wr}%`}/>
         <SummaryCard label="Profit Factor" value={pf}/>
+        <SummaryCard label="R Expectancy"  value={rExpectancy == null ? '—' : `${rExpectancy > 0 ? '+' : ''}${rExpectancy}R`} accent={rExpectancy == null ? undefined : rExpectancy > 0 ? 'var(--green)' : 'var(--red)'}/>
         <SummaryCard label="Total Trades"  value={filteredTrades.length}/>
+      </div>
+
+      {/* Summary cards row 2: drawdown + streaks */}
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+        <SummaryCard label="Max Drawdown" value={maxDD > 0 ? `-₹${fmt(maxDD)}` : '—'} accent={maxDD > 0 ? 'var(--red)' : undefined}/>
+        <SummaryCard label="Current Streak" value={curStreak ? `${curStreak}× ${curStreakType === 'win' ? '🟢' : '🔴'}` : '—'} accent={curStreakType === 'win' ? 'var(--green)' : curStreakType === 'loss' ? 'var(--red)' : undefined}/>
+        <SummaryCard label="Best Win Streak"  value={maxWStreak ? `${maxWStreak}W` : '—'} accent="var(--green)"/>
+        <SummaryCard label="Worst Loss Streak" value={maxLStreak ? `${maxLStreak}L` : '—'} accent="var(--red)"/>
+        {totalComm > 0 && <SummaryCard label="Total Commission" value={`-₹${fmt(totalComm)}`} accent="var(--text-3)"/>}
       </div>
 
       {/* Equity curve + Donut */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16 }}>
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', margin: '0 0 20px' }}>Equity Curve</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', margin: '0 0 20px' }}>Equity Curve <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-3)', marginLeft: 6 }}>— red shading = drawdown</span></h3>
           <EquityCurve trades={filteredTrades}/>
         </div>
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
@@ -259,29 +501,62 @@ export default function StatsView({ trades, strats }) {
         </div>
       </div>
 
+      {/* Calendar heatmap */}
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', margin: '0 0 16px' }}>Daily P&amp;L Calendar</h3>
+        <CalendarHeatmap trades={filteredTrades}/>
+        <div style={{ display: 'flex', gap: 16, marginTop: 10 }}>
+          {[['Loss day', 'rgba(220,38,38,0.7)'], ['Flat', 'var(--border)'], ['Profit day', 'rgba(45,122,95,0.7)']].map(([l, c]) => (
+            <span key={l} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-3)' }}>
+              <span style={{ width: 12, height: 12, borderRadius: 2, background: c, display: 'inline-block' }}/>
+              {l}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Weekday performance */}
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', margin: '0 0 20px' }}>Performance by Day of Week</h3>
+        <WeekdayPerformance trades={filteredTrades}/>
+      </div>
+
       {/* PnL by Strategy + Advanced Metrics */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16 }}>
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', margin: '0 0 20px' }}>PnL by Strategy</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', margin: '0 0 20px' }}>P&amp;L by Strategy</h3>
           <PnlByStrategy trades={filteredTrades} strats={strats}/>
         </div>
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24 }}>
           <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', margin: '0 0 20px' }}>Advanced Metrics</h3>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {[
-              { label: 'Average Win',  value: `₹${fmt(avgWin)}`,       color: 'var(--green)' },
-              { label: 'Average Loss', value: `-₹${fmt(avgLoss)}`,     color: 'var(--red)'   },
-              { label: 'Largest Win',  value: `₹${fmt(largestW)}`,     color: 'var(--green)' },
-              { label: 'Largest Loss', value: `-₹${fmt(Math.abs(largestL))}`, color: 'var(--red)' },
-              { label: 'Expectancy',   value: `₹${expectancy}`,        color: 'var(--text)'  },
+              { label: 'Average Win',    value: `₹${fmt(avgWin)}`,                   color: 'var(--green)' },
+              { label: 'Average Loss',   value: `-₹${fmt(avgLoss)}`,                 color: 'var(--red)'   },
+              { label: 'Largest Win',    value: `₹${fmt(largestW)}`,                 color: 'var(--green)' },
+              { label: 'Largest Loss',   value: `-₹${fmt(Math.abs(largestL))}`,      color: 'var(--red)'   },
+              { label: 'Avg Win R',      value: avgWinR  != null ? `+${avgWinR.toFixed(1)}R`  : '—', color: 'var(--green)' },
+              { label: 'Avg Loss R',     value: avgLossR != null ? `-${avgLossR.toFixed(1)}R` : '—', color: 'var(--red)' },
             ].map(({ label, value, color }, i, arr) => (
-              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 0', borderBottom: i < arr.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                <span style={{ fontSize: 14, color: 'var(--text-2)' }}>{label}</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color, fontFamily: 'JetBrains Mono, monospace' }}>{value}</span>
+              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: i < arr.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{label}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color, fontFamily: 'JetBrains Mono, monospace' }}>{value}</span>
               </div>
             ))}
           </div>
         </div>
+      </div>
+
+      {/* Per-strategy performance table */}
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', margin: '0 0 16px' }}>Strategy Performance</h3>
+        <StrategyPerformance trades={filteredTrades} strats={strats}/>
+      </div>
+
+      {/* Variant breakdown */}
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', margin: '0 0 16px' }}>Variant Breakdown (CE / PE / etc.)</h3>
+        <VariantPerformance trades={filteredTrades} strats={strats}/>
       </div>
     </div>
   )

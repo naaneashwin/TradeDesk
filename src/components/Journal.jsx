@@ -16,6 +16,16 @@ const typePill = dir => {
   )
 }
 
+const EXIT_STRATEGY_LABELS = {
+  target:         'Target Hit',
+  stoploss:       'Stop Loss',
+  trailing_stop:  'Trailing Stop',
+  partial_profit: 'Partial Profit',
+  time_based:     'Time-Based',
+  reversal:       'Reversal Signal',
+  manual:         'Manual',
+}
+
 const STATUS_MAP = {
   win:       { label: 'WON',       bg: 'rgba(45,122,95,0.1)',   color: 'var(--green)', border: 'rgba(45,122,95,0.25)' },
   loss:      { label: 'LOST',      bg: 'rgba(220,38,38,0.08)',  color: 'var(--red)',   border: 'rgba(220,38,38,0.2)' },
@@ -42,6 +52,122 @@ const COLS = [
   { key: '_del',        label: '',         sortable: false },
 ]
 
+// ── Payoff Chart ──────────────────────────────────────────────
+function PayoffChart({ trade }) {
+  const { entryPrice, initialSl, planTarget, planStop, qty = 1, direction = 'long' } = trade
+  const sl     = initialSl ?? planStop
+  const target = planTarget
+  if (!entryPrice || !sl || !target) return null
+
+  const isLong = direction !== 'short'
+  const pnlAt  = price => (isLong ? 1 : -1) * (price - entryPrice) * (qty || 1)
+
+  // Price axis range with 20% padding on each side
+  const prices = [sl, entryPrice, target]
+  const spread = Math.max(...prices) - Math.min(...prices)
+  const pMin   = Math.min(...prices) - spread * 0.22
+  const pMax   = Math.max(...prices) + spread * 0.22
+
+  // P&L axis range
+  const pnlSl  = pnlAt(sl)
+  const pnlTgt = pnlAt(target)
+  const pnlPad = Math.abs(pnlTgt - pnlSl) * 0.25
+  const yMin   = Math.min(pnlSl, pnlTgt) - pnlPad
+  const yMax   = Math.max(pnlSl, pnlTgt) + pnlPad
+
+  const W = 540, H = 180
+  const PL = 76, PR = 16, PT = 18, PB = 44
+  const cW = W - PL - PR
+  const cH = H - PT - PB
+
+  const xOf = p   => PL + ((p - pMin) / (pMax - pMin)) * cW
+  const yOf = pnl => PT + ((yMax - pnl) / (yMax - yMin)) * cH
+
+  const zeroY  = yOf(0)
+  const entryX = xOf(entryPrice)
+
+  // The payoff is a straight line from pMin to pMax
+  const x0 = PL, y0 = yOf(pnlAt(pMin))
+  const x1 = W - PR, y1 = yOf(pnlAt(pMax))
+
+  // Profit and loss fill regions — clipped at zero line
+  // For long: profit zone is right of entry (higher prices), loss zone is left
+  // For short: flipped
+  const profitX = isLong ? entryX : PL
+  const profitW = isLong ? (W - PR - entryX) : (entryX - PL)
+  const lossX   = isLong ? PL    : entryX
+  const lossW   = isLong ? (entryX - PL) : (W - PR - entryX)
+
+  const fmtPnl = v => {
+    const abs = Math.abs(v)
+    const sign = v >= 0 ? '+' : '−'
+    if (abs >= 100000) return `${sign}₹${(abs / 100000).toFixed(1)}L`
+    if (abs >= 1000)   return `${sign}₹${(abs / 1000).toFixed(1)}k`
+    return `${sign}₹${Math.round(abs)}`
+  }
+
+  const actualExit = trade.exits?.length ? trade.exits[trade.exits.length - 1]?.exitPrice : null
+
+  const markers = [
+    { price: sl,          label: 'SL',    color: 'var(--red)'   },
+    { price: entryPrice,  label: 'Entry', color: 'var(--text-2)' },
+    { price: target,      label: 'Target',color: 'var(--green)' },
+    ...(actualExit != null && Math.abs(actualExit - entryPrice) > 0.001
+        ? [{ price: actualExit, label: 'Exit', color: '#3b82f6' }]
+        : []),
+  ]
+
+  // Y-axis tick values
+  const yTicks = [pnlTgt, 0, pnlSl]
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+      {/* Background profit zone (clipped rectangle above zero) */}
+      <clipPath id={`cp-profit-${trade.id}`}>
+        <rect x={profitX} y={PT} width={Math.max(profitW, 0)} height={zeroY - PT}/>
+      </clipPath>
+      <rect x={profitX} y={PT} width={Math.max(profitW, 0)} height={zeroY - PT} fill="rgba(45,122,95,0.10)" clipPath={`url(#cp-profit-${trade.id})`}/>
+
+      {/* Background loss zone (below zero) */}
+      <clipPath id={`cp-loss-${trade.id}`}>
+        <rect x={lossX} y={zeroY} width={Math.max(lossW, 0)} height={H - PB - zeroY}/>
+      </clipPath>
+      <rect x={lossX} y={zeroY} width={Math.max(lossW, 0)} height={H - PB - zeroY} fill="rgba(220,38,38,0.09)" clipPath={`url(#cp-loss-${trade.id})`}/>
+
+      {/* Zero / breakeven line */}
+      <line x1={PL} y1={zeroY} x2={W - PR} y2={zeroY} stroke="var(--border)" strokeWidth="1"/>
+
+      {/* Payoff line */}
+      <line x1={x0} y1={y0} x2={x1} y2={y1} stroke="var(--text-2)" strokeWidth="2" strokeLinecap="round"/>
+
+      {/* Y-axis labels */}
+      {yTicks.map((v, i) => {
+        const color = v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--text-3)'
+        return (
+          <text key={i} x={PL - 6} y={yOf(v) + 4} textAnchor="end" fontSize="10" fill={color}
+            fontFamily="JetBrains Mono, monospace">{fmtPnl(v)}</text>
+        )
+      })}
+
+      {/* Level markers */}
+      {markers.map(({ price, label, color }) => {
+        if (price < pMin || price > pMax) return null
+        const x   = xOf(price)
+        const pnl = price === entryPrice ? 0 : pnlAt(price)
+        const y   = yOf(pnl)
+        return (
+          <g key={label}>
+            <line x1={x} y1={PT} x2={x} y2={H - PB} stroke={color} strokeWidth="1" strokeDasharray="4 3" opacity="0.65"/>
+            <circle cx={x} cy={y} r="4.5" fill={color} stroke="var(--surface)" strokeWidth="1.5"/>
+            <text x={x} y={H - PB + 14} textAnchor="middle" fontSize="10" fontWeight="700" fill={color}>{label}</text>
+            <text x={x} y={H - PB + 26} textAnchor="middle" fontSize="9" fill="var(--text-3)">{price % 1 === 0 ? price : price.toFixed(1)}</text>
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
+
 function daysHeld(trade) {
   const entry = new Date(trade.date)
   const lastExitDate = trade.exits?.length
@@ -56,7 +182,7 @@ function daysHeld(trade) {
 }
 
 // ── Filter panel ─────────────────────────────────────────────
-function FilterPanel({ strats, filters, setFilters, onClose }) {
+function FilterPanel({ strats, filters, setFilters, exitStrategies, onClose }) {
   const ref = useRef()
   useEffect(() => {
     const h = e => { if (ref.current && !ref.current.contains(e.target)) onClose() }
@@ -112,7 +238,23 @@ function FilterPanel({ strats, filters, setFilters, onClose }) {
           </button>
         ))}
       </div>
-      <button onClick={() => { setFilters({ outcome: 'all', direction: 'all', strategyId: 'all', mock: 'all' }); onClose() }}
+      {exitStrategies.length > 0 && (
+        <>
+          <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '14px 0 10px' }}>Exit Strategy</p>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
+            {['all', ...exitStrategies].map(v => (
+              <button key={v} onClick={() => setFilters(f => ({ ...f, exitStrategy: v }))}
+                style={{ padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                  background: filters.exitStrategy === v ? 'var(--green)' : 'var(--surface-2)',
+                  color: filters.exitStrategy === v ? '#fff' : 'var(--text-2)',
+                  border: `1px solid ${filters.exitStrategy === v ? 'var(--green)' : 'var(--border)'}` }}>
+                {v === 'all' ? 'All' : v}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      <button onClick={() => { setFilters({ outcome: 'all', direction: 'all', strategyId: 'all', mock: 'all', exitStrategy: 'all' }); onClose() }}
         style={{ marginTop: 14, width: '100%', padding: '8px', borderRadius: 8, border: '1px solid var(--border)', background: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-2)', fontFamily: 'Inter, sans-serif' }}>
         Clear Filters
       </button>
@@ -171,12 +313,13 @@ function DatePanel({ dateRange, setDateRange, onClose }) {
 // ── Main component ────────────────────────────────────────────
 export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTrade }) {
   const [search,     setSearch]     = useState('')
-  const [filters,    setFilters]    = useState({ outcome: 'all', direction: 'all', strategyId: 'all', mock: 'all' })
+  const [filters,    setFilters]    = useState({ outcome: 'all', direction: 'all', strategyId: 'all', mock: 'all', exitStrategy: 'all' })
   const [dateRange,  setDateRange]  = useState({ from: '', to: '' })
   const [sort,       setSort]       = useState({ key: 'date', dir: 'desc' })
   const [toDelete,   setToDelete]   = useState(null)
   const [editTrade,  setEditTrade]  = useState(null)
   const [logModal,   setLogModal]   = useState(false)
+  const [prefill,    setPrefill]    = useState(null)   // { instrument, planTarget, planStop, planThesis }
   const [expanded,   setExpanded]   = useState(new Set())
   const [livePrices, setLivePrices] = useState({}) // { [tradeId]: { ltp, pnl, change, changePct } }
   const toggleExpand = id => setExpanded(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
@@ -189,8 +332,17 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
     return () => document.removeEventListener('td:journal-log', h)
   }, [])
 
+  useEffect(() => {
+    const h = (e) => { setPrefill(e.detail ?? null); setLogModal(true) }
+    document.addEventListener('td:journal-log-prefill', h)
+    return () => document.removeEventListener('td:journal-log-prefill', h)
+  }, [])
+
   // ── Live price polling for open + real trades ──────────────
   const fetchLivePrices = useCallback(async () => {
+    // Skip price fetching in local development — Netlify functions aren't available
+    if (import.meta.env.DEV) return
+
     const openReal = trades.filter(t => t.outcome === 'open' && !t.mock && t.instrument && t.entryPrice)
     if (!openReal.length) return
 
@@ -231,11 +383,16 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
 
   const sm = Object.fromEntries(strats.map(st => [st.id, st]))
 
+  // Collect all unique exit strategies used across all trades
+  const allExitStrategies = [...new Set(
+    trades.flatMap(t => (t.exits ?? []).map(e => e.exitStrategy).filter(Boolean))
+  )]
+
   const exportCSV = () => {
     const headers = ['Date','Instrument','Strategy','Direction','Entry Price','Exit Price','Qty','Days Held','PnL','Outcome','Mock','Notes','Exits']
     const rows = trades.map(t => {
       const days = daysHeld(t)
-      const exitsStr = (t.exits ?? []).map(e => `${e.exitDate}:qty${e.qty}@${e.exitPrice}=₹${(e.pnl ?? 0).toFixed(2)}`).join(' | ')
+      const exitsStr = (t.exits ?? []).map(e => `${e.exitDate}:qty${e.qty}@${e.exitPrice}=₹${(e.pnl ?? 0).toFixed(2)}[${e.exitStrategy ? (EXIT_STRATEGY_LABELS[e.exitStrategy] ?? e.exitStrategy) : ''}]`).join(' | ')
       return [
         t.date ?? '',
         t.instrument ?? '',
@@ -263,7 +420,8 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
 
   const activeFilterCount = [
     filters.outcome !== 'all', filters.direction !== 'all',
-    filters.strategyId !== 'all', filters.mock !== 'all', dateRange.from || dateRange.to,
+    filters.strategyId !== 'all', filters.mock !== 'all',
+    filters.exitStrategy !== 'all', dateRange.from || dateRange.to,
   ].filter(Boolean).length
 
   const processed = [...trades]
@@ -274,6 +432,7 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
       if (filters.strategyId !== 'all' && t.strategyId !== filters.strategyId) return false
       if (filters.mock === 'mock' && !t.mock) return false
       if (filters.mock === 'real' && t.mock) return false
+      if (filters.exitStrategy !== 'all' && !(t.exits ?? []).some(e => e.exitStrategy === filters.exitStrategy)) return false
       if (dateRange.from && t.date < dateRange.from) return false
       if (dateRange.to   && t.date > dateRange.to)   return false
       return true
@@ -326,7 +485,7 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
               <span style={{ position: 'absolute', top: -6, right: -6, width: 16, height: 16, borderRadius: '50%', background: 'var(--green)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{activeFilterCount}</span>
             )}
           </button>
-          {showFilter && <FilterPanel strats={strats} filters={filters} setFilters={setFilters} onClose={() => setShowFilter(false)}/>}
+          {showFilter && <FilterPanel strats={strats} filters={filters} setFilters={setFilters} exitStrategies={allExitStrategies} onClose={() => setShowFilter(false)}/>}
         </div>
 
         {/* Date Range */}
@@ -384,12 +543,16 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
                 const barW      = Math.min(Math.abs(dispPnl || 0) / maxPnl * 100, 100)
                 const pnlColor  = dispPnl > 0 ? 'var(--green)' : dispPnl < 0 ? 'var(--red)' : 'var(--text-2)'
                 const days      = daysHeld(t)
-                const multiExit = t.exits?.length > 1
+                const multiExit  = t.exits?.length > 1
                 const isExpanded = expanded.has(t.id)
-                const isLast    = i === processed.length - 1
+                const isLast     = i === processed.length - 1
+                // Show expand chevron if there is any expandable content
+                const hasPayoff  = !!(t.entryPrice && (t.initialSl || t.planStop) && t.planTarget)
+                const hasDetails = !!(t.planThesis || t.planTarget || t.planStop || t.initialSl || t.screenshotUrl || t.commission)
+                const expandable = multiExit || hasPayoff || hasDetails
                 return (
                   <>
-                  <tr key={t.id} style={{ borderBottom: (!isLast || (multiExit && isExpanded)) ? '1px solid var(--border)' : 'none', transition: 'background 0.1s' }}
+                  <tr key={t.id} style={{ borderBottom: (!isLast || (expandable && isExpanded)) ? '1px solid var(--border)' : 'none', transition: 'background 0.1s' }}
                     onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-2)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                     <td style={{ padding: '16px 16px', fontSize: 13, color: 'var(--text-2)', whiteSpace: 'nowrap' }}>{t.date}</td>
@@ -423,7 +586,7 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
                       {t.exitPrice ? (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
                           <span>{t.exitPrice.toFixed(2)}</span>
-                          {multiExit && (
+                          {multiExit ? (
                             <button onClick={() => toggleExpand(t.id)} style={{
                               display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 600,
                               padding: '2px 7px', borderRadius: 10, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
@@ -436,7 +599,19 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
                               </svg>
                               {t.exits.length} exits
                             </button>
-                          )}
+                          ) : (() => {
+                            const es = t.exits?.[0]?.exitStrategy
+                            if (!es) return null
+                            const label = EXIT_STRATEGY_LABELS[es] ?? es
+                            return (
+                              <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 10,
+                                background: 'var(--surface-2)', color: 'var(--text-3)', border: '1px solid var(--border)',
+                                maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}
+                                title={label}>
+                                {label}
+                              </span>
+                            )
+                          })()}
                         </div>
                       ) : live ? (
                         <span style={{ fontSize: 12, color: 'var(--text-3)', fontStyle: 'italic' }}>live</span>
@@ -471,6 +646,18 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
                     </td>
                     <td style={{ padding: '16px 16px' }}>
                       <div style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'flex-end' }}>
+                        {/* Expand */}
+                        {expandable && (
+                          <button title={isExpanded ? 'Collapse' : 'Expand'}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: isExpanded ? 'var(--green)' : 'var(--text-3)', padding: '2px 4px', lineHeight: 1, borderRadius: 4, transition: 'color 0.15s' }}
+                            onClick={() => toggleExpand(t.id)}
+                            onMouseEnter={e => e.currentTarget.style.color = 'var(--text)'}
+                            onMouseLeave={e => e.currentTarget.style.color = isExpanded ? 'var(--green)' : 'var(--text-3)'}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'none', display: 'block' }}>
+                              <polyline points="6 9 12 15 18 9"/>
+                            </svg>
+                          </button>
+                        )}
                         {/* Edit */}
                         <button title="Edit" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: '2px 4px', lineHeight: 1, borderRadius: 4 }}
                           onClick={() => setEditTrade(t)}
@@ -500,7 +687,7 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
                           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                             <thead>
                               <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
-                                {['#', 'Exit Date', 'Qty', 'Exit Price', 'P&L'].map(h => (
+                                {['#', 'Exit Date', 'Qty', 'Exit Price', 'P&L', 'Reason'].map(h => (
                                   <th key={h} style={{ padding: '8px 14px', textAlign: h === '#' ? 'center' : h === 'P&L' || h === 'Exit Price' || h === 'Qty' ? 'right' : 'left', fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>{h}</th>
                                 ))}
                               </tr>
@@ -515,11 +702,80 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
                                     <td style={{ padding: '9px 14px', textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text)' }}>{e.qty}</td>
                                     <td style={{ padding: '9px 14px', textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text)' }}>{e.exitPrice?.toFixed(2)}</td>
                                     <td style={{ padding: '9px 14px', textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, color: epnlColor }}>{e.pnl >= 0 ? '+' : ''}₹{e.pnl?.toFixed(2)}</td>
+                                    <td style={{ padding: '9px 14px', color: 'var(--text-2)', whiteSpace: 'nowrap' }}>{e.exitStrategy ? (EXIT_STRATEGY_LABELS[e.exitStrategy] ?? e.exitStrategy) : '—'}</td>
                                   </tr>
                                 )
                               })}
                             </tbody>
                           </table>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {isExpanded && t.entryPrice && (t.initialSl || t.planStop) && t.planTarget && (
+                    <tr key={`${t.id}-payoff`} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td colSpan={COLS.length} style={{ padding: '0 16px 14px 16px', background: 'var(--surface-2)' }}>
+                        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 18px' }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
+                            Payoff Chart — {t.direction === 'short' ? 'Short' : 'Long'} · {t.instrument}
+                          </div>
+                          <PayoffChart trade={t}/>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {isExpanded && (t.planThesis || t.planTarget || t.planStop || t.screenshotUrl || t.commission) && (
+                    <tr key={`${t.id}-detail`} style={{ borderBottom: !isLast ? '1px solid var(--border)' : 'none' }}>
+                      <td colSpan={COLS.length} style={{ padding: '0 16px 16px 16px', background: 'var(--surface-2)' }}>
+                        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                          {/* Plan vs Actual */}
+                          {(t.planThesis || t.planTarget || t.planStop) && (
+                            <div style={{ flex: 1, minWidth: 200, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+                              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Pre-Trade Plan</div>
+                              {t.planThesis && <p style={{ fontSize: 12, color: 'var(--text-2)', margin: '0 0 8px', lineHeight: 1.5 }}>{t.planThesis}</p>}
+                              <div style={{ display: 'flex', gap: 20 }}>
+                                {t.planTarget != null && (
+                                  <div>
+                                    <div style={{ fontSize: 10, color: 'var(--text-3)' }}>Plan Target</div>
+                                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--green)', fontFamily: 'JetBrains Mono, monospace' }}>{t.planTarget}</div>
+                                    {t.exits?.length && t.exits[t.exits.length-1]?.exitPrice != null && (
+                                      <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>
+                                        Actual: <span style={{ color: 'var(--text-2)', fontFamily: 'JetBrains Mono, monospace' }}>{t.exits[t.exits.length-1].exitPrice?.toFixed(2)}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                {t.planStop != null && (
+                                  <div>
+                                    <div style={{ fontSize: 10, color: 'var(--text-3)' }}>Plan Stop</div>
+                                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--red)', fontFamily: 'JetBrains Mono, monospace' }}>{t.planStop}</div>
+                                    {t.initialSl != null && (
+                                      <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>
+                                        Actual SL: <span style={{ color: 'var(--text-2)', fontFamily: 'JetBrains Mono, monospace' }}>{t.initialSl}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          {/* Commission */}
+                          {t.commission > 0 && (
+                            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, minWidth: 140 }}>
+                              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Charges</div>
+                              <div style={{ fontSize: 12, color: 'var(--text-2)' }}>Commission: <span style={{ color: 'var(--red)', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700 }}>-₹{t.commission.toFixed(2)}</span></div>
+                              {t.pnl != null && <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 4 }}>Net P&amp;L: <span style={{ color: t.pnl - t.commission >= 0 ? 'var(--green)' : 'var(--red)', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700 }}>{t.pnl - t.commission >= 0 ? '+' : ''}₹{(t.pnl - t.commission).toFixed(2)}</span></div>}
+                            </div>
+                          )}
+                          {/* Screenshot */}
+                          {t.screenshotUrl && (
+                            <div style={{ flex: 2, minWidth: 240 }}>
+                              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Chart Screenshot</div>
+                              <a href={t.screenshotUrl} target="_blank" rel="noopener noreferrer">
+                                <img src={t.screenshotUrl} alt="Chart screenshot" style={{ maxWidth: '100%', maxHeight: 280, borderRadius: 8, border: '1px solid var(--border)', display: 'block', objectFit: 'contain' }}/>
+                              </a>
+                            </div>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -533,7 +789,7 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
       )}
 
       {logModal && strats.length > 0 && (
-        <LogModal strategy={strats[0]} onSave={trade => { onLogTrade(trade); setLogModal(false) }} onClose={() => setLogModal(false)} variant={null} score={{ done: 0, total: 0 }}/>
+        <LogModal strategy={strats[0]} prefill={prefill} onSave={trade => { onLogTrade(trade); setLogModal(false); setPrefill(null) }} onClose={() => { setLogModal(false); setPrefill(null) }} variant={null} score={{ done: 0, total: 0 }}/>
       )}
 
       {editTrade && (() => {
