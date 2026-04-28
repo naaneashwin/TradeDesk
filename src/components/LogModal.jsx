@@ -154,6 +154,7 @@ export default function LogModal({ strategy, onSave, onUpdate, onClose, variant,
     planTarget:    isEdit ? (editTrade.planTarget  != null ? String(editTrade.planTarget) : '') : (prefill?.planTarget != null ? String(prefill.planTarget) : ''),
     planStop:      isEdit ? (editTrade.planStop    != null ? String(editTrade.planStop)   : '') : (prefill?.planStop   != null ? String(prefill.planStop)   : ''),
     notes:         isEdit ? (editTrade.notes || '')      : '',
+    tags:          isEdit ? (editTrade.tags ?? []).join(', ') : '',
     mock:          isEdit ? (editTrade.mock ?? false)    : false,
   })
 
@@ -245,6 +246,7 @@ export default function LogModal({ strategy, onSave, onUpdate, onClose, variant,
       rMult,
       commission:     parseFloat(form.commission)  || null,
       screenshotUrl:  form.screenshotUrl.trim()    || null,
+      tags:           form.tags.split(',').map(t => t.trim()).filter(Boolean),
       planThesis:     form.planThesis.trim()       || null,
       planTarget:     parseFloat(form.planTarget)  || null,
       planStop:       parseFloat(form.planStop)    || null,
@@ -450,7 +452,10 @@ export default function LogModal({ strategy, onSave, onUpdate, onClose, variant,
       </div>
 
       <Field label="Notes">
-        <textarea className="t-inp" style={{ height: 72, resize: 'vertical', marginBottom: 20 }} value={form.notes} onChange={e => fEntry('notes', e.target.value)} placeholder="What went right? What went wrong?"/>
+        <textarea className="t-inp" style={{ height: 72, resize: 'vertical', marginBottom: 14 }} value={form.notes} onChange={e => fEntry('notes', e.target.value)} placeholder="What went right? What went wrong?"/>
+      </Field>
+      <Field label="Tags (comma-separated)">
+        <input className="t-inp" style={{ marginBottom: 20 }} value={form.tags} onChange={e => fEntry('tags', e.target.value)} placeholder="e.g. breakout, momentum, FOMO mistake"/>
       </Field>
 
       {/* ── Pre-Trade Plan ────────────────────────────────── */}

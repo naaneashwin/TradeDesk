@@ -476,6 +476,7 @@ export async function upsertWatchlistItem(item) {
     stop:        item.stop        ?? null,
     tags:        item.tags        ?? [],
     status:      item.status      ?? 'watching',
+    pinned:      item.pinned      ?? false,
     added_at:    item.addedAt     ?? new Date().toISOString().slice(0, 10),
     updated_at:  new Date().toISOString(),
   }
@@ -505,6 +506,7 @@ function rowToWatchlistItem(row) {
     stop:        row.stop        != null ? Number(row.stop)   : null,
     tags:        row.tags        ?? [],
     status:      row.status      ?? 'watching',
+    pinned:      row.pinned      ?? false,
     addedAt:     row.added_at,
     createdAt:   row.created_at,
   }

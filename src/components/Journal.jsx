@@ -182,7 +182,7 @@ function daysHeld(trade) {
 }
 
 // ── Filter panel ─────────────────────────────────────────────
-function FilterPanel({ strats, filters, setFilters, exitStrategies, onClose }) {
+function FilterPanel({ strats, filters, setFilters, exitStrategies, allTags, onClose }) {
   const ref = useRef()
   useEffect(() => {
     const h = e => { if (ref.current && !ref.current.contains(e.target)) onClose() }
@@ -254,7 +254,23 @@ function FilterPanel({ strats, filters, setFilters, exitStrategies, onClose }) {
           </div>
         </>
       )}
-      <button onClick={() => { setFilters({ outcome: 'all', direction: 'all', strategyId: 'all', mock: 'all', exitStrategy: 'all' }); onClose() }}
+      <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '14px 0 10px' }}>Tags</p>
+      {allTags.length === 0 ? (
+        <p style={{ fontSize: 12, color: 'var(--text-3)', fontStyle: 'italic', marginBottom: 4 }}>No tags yet — add tags when logging a trade.</p>
+      ) : (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
+          {['all', ...allTags].map(v => (
+            <button key={v} onClick={() => setFilters(f => ({ ...f, tag: v }))}
+              style={{ padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                background: filters.tag === v ? 'rgba(59,130,246,0.85)' : 'var(--surface-2)',
+                color: filters.tag === v ? '#fff' : 'var(--text-2)',
+                border: `1px solid ${filters.tag === v ? 'rgba(59,130,246,0.6)' : 'var(--border)'}` }}>
+              {v === 'all' ? 'All' : `#${v}`}
+            </button>
+          ))}
+        </div>
+      )}
+      <button onClick={() => { setFilters({ outcome: 'all', direction: 'all', strategyId: 'all', mock: 'all', exitStrategy: 'all', tag: 'all' }); onClose() }}
         style={{ marginTop: 14, width: '100%', padding: '8px', borderRadius: 8, border: '1px solid var(--border)', background: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-2)', fontFamily: 'Inter, sans-serif' }}>
         Clear Filters
       </button>
@@ -313,7 +329,7 @@ function DatePanel({ dateRange, setDateRange, onClose }) {
 // ── Main component ────────────────────────────────────────────
 export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTrade }) {
   const [search,     setSearch]     = useState('')
-  const [filters,    setFilters]    = useState({ outcome: 'all', direction: 'all', strategyId: 'all', mock: 'all', exitStrategy: 'all' })
+  const [filters,    setFilters]    = useState({ outcome: 'all', direction: 'all', strategyId: 'all', mock: 'all', exitStrategy: 'all', tag: 'all' })
   const [dateRange,  setDateRange]  = useState({ from: '', to: '' })
   const [sort,       setSort]       = useState({ key: 'date', dir: 'desc' })
   const [toDelete,   setToDelete]   = useState(null)
@@ -388,6 +404,9 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
     trades.flatMap(t => (t.exits ?? []).map(e => e.exitStrategy).filter(Boolean))
   )]
 
+  // Collect all unique tags used across all trades
+  const allTags = [...new Set(trades.flatMap(t => t.tags ?? []))]
+
   const exportCSV = () => {
     const headers = ['Date','Instrument','Strategy','Direction','Entry Price','Exit Price','Qty','Days Held','PnL','Outcome','Mock','Notes','Exits']
     const rows = trades.map(t => {
@@ -421,7 +440,7 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
   const activeFilterCount = [
     filters.outcome !== 'all', filters.direction !== 'all',
     filters.strategyId !== 'all', filters.mock !== 'all',
-    filters.exitStrategy !== 'all', dateRange.from || dateRange.to,
+    filters.exitStrategy !== 'all', filters.tag !== 'all', dateRange.from || dateRange.to,
   ].filter(Boolean).length
 
   const processed = [...trades]
@@ -433,6 +452,7 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
       if (filters.mock === 'mock' && !t.mock) return false
       if (filters.mock === 'real' && t.mock) return false
       if (filters.exitStrategy !== 'all' && !(t.exits ?? []).some(e => e.exitStrategy === filters.exitStrategy)) return false
+      if (filters.tag !== 'all' && !(t.tags ?? []).includes(filters.tag)) return false
       if (dateRange.from && t.date < dateRange.from) return false
       if (dateRange.to   && t.date > dateRange.to)   return false
       return true
@@ -485,7 +505,7 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
               <span style={{ position: 'absolute', top: -6, right: -6, width: 16, height: 16, borderRadius: '50%', background: 'var(--green)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{activeFilterCount}</span>
             )}
           </button>
-          {showFilter && <FilterPanel strats={strats} filters={filters} setFilters={setFilters} exitStrategies={allExitStrategies} onClose={() => setShowFilter(false)}/>}
+          {showFilter && <FilterPanel strats={strats} filters={filters} setFilters={setFilters} exitStrategies={allExitStrategies} allTags={allTags} onClose={() => setShowFilter(false)}/>}
         </div>
 
         {/* Date Range */}
@@ -557,7 +577,7 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                     <td style={{ padding: '16px 16px', fontSize: 13, color: 'var(--text-2)', whiteSpace: 'nowrap' }}>{t.date}</td>
                     <td style={{ padding: '16px 16px', fontWeight: 700, color: 'var(--text)', fontSize: 14 }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         {t.instrument}
                         {live && (
                           <span style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-3)' }}>
@@ -566,6 +586,19 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
                               {live.changePct >= 0 ? '▲' : '▼'}{Math.abs(live.changePct).toFixed(2)}%
                             </span>
                           </span>
+                        )}
+                        {t.tags?.length > 0 && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                            {t.tags.map(tag => (
+                              <span key={tag} onClick={() => setFilters(f => ({ ...f, tag }))}
+                                style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 10, cursor: 'pointer',
+                                  background: filters.tag === tag ? 'rgba(59,130,246,0.15)' : 'var(--surface-2)',
+                                  color: filters.tag === tag ? '#3b82f6' : 'var(--text-3)',
+                                  border: `1px solid ${filters.tag === tag ? 'rgba(59,130,246,0.4)' : 'var(--border)'}` }}>
+                                #{tag}
+                              </span>
+                            ))}
+                          </div>
                         )}
                       </div>
                     </td>

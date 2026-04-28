@@ -92,7 +92,7 @@ function WatchlistModal({ item, onSave, onClose }) {
   )
 }
 
-function WatchlistCard({ item, onEdit, onDelete, onStatusCycle, onLogTrade }) {
+function WatchlistCard({ item, onEdit, onDelete, onStatusCycle, onLogTrade, activeTag, onTagClick, onPinToggle, pinnedCount }) {
   const [showConfirm, setShowConfirm] = useState(false)
   const riskReward = item.target && item.stop
     ? ((item.target - item.stop) / Math.abs(item.stop)).toFixed(1)
@@ -100,7 +100,7 @@ function WatchlistCard({ item, onEdit, onDelete, onStatusCycle, onLogTrade }) {
 
   return (
     <div style={{
-      background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 20,
+      background: 'var(--surface)', border: `1px solid ${item.pinned ? 'rgba(245,158,11,0.4)' : 'var(--border)'}`, borderRadius: 14, padding: 20,
       display: 'flex', flexDirection: 'column', gap: 12,
       opacity: item.status === 'removed' ? 0.55 : 1,
     }}>
@@ -117,6 +117,12 @@ function WatchlistCard({ item, onEdit, onDelete, onStatusCycle, onLogTrade }) {
           {item.status === 'entered' && (
             <button onClick={onLogTrade} style={{ background: 'var(--green)', border: 'none', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: 12, color: '#fff', fontWeight: 700, whiteSpace: 'nowrap' }}>Log Trade</button>
           )}
+          <button
+            onClick={onPinToggle}
+            title={item.pinned ? 'Unpin' : pinnedCount >= 5 ? 'Max 5 pins reached' : 'Pin to top'}
+            disabled={!item.pinned && pinnedCount >= 5}
+            style={{ background: item.pinned ? 'rgba(245,158,11,0.12)' : 'none', border: `1px solid ${item.pinned ? 'rgba(245,158,11,0.4)' : 'var(--border)'}`, borderRadius: 6, padding: '5px 8px', cursor: !item.pinned && pinnedCount >= 5 ? 'not-allowed' : 'pointer', fontSize: 13, color: item.pinned ? '#d97706' : 'var(--text-3)', opacity: !item.pinned && pinnedCount >= 5 ? 0.4 : 1, lineHeight: 1 }}
+          >📌</button>
           <button onClick={onEdit} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: 12, color: 'var(--text-2)' }}>Edit</button>
           {!showConfirm
             ? <button onClick={() => setShowConfirm(true)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: 12, color: 'var(--red)' }}>✕</button>
@@ -169,7 +175,11 @@ function WatchlistCard({ item, onEdit, onDelete, onStatusCycle, onLogTrade }) {
       {item.tags.length > 0 && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {item.tags.map(t => (
-            <span key={t} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 20, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-2)' }}>#{t}</span>
+            <span key={t} onClick={() => onTagClick(t)}
+              style={{ fontSize: 11, padding: '3px 9px', borderRadius: 20, cursor: 'pointer',
+                background: activeTag === t ? 'rgba(59,130,246,0.15)' : 'var(--surface-2)',
+                border: `1px solid ${activeTag === t ? 'rgba(59,130,246,0.4)' : 'var(--border)'}`,
+                color: activeTag === t ? '#3b82f6' : 'var(--text-2)' }}>#{t}</span>
           ))}
         </div>
       )}
@@ -185,6 +195,9 @@ export default function Watchlist({ items, onUpsert, onDelete }) {
   const [editItem, setEditItem] = useState(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [tagFilter, setTagFilter] = useState('all')
+
+  const allTags = [...new Set(items.flatMap(i => i.tags ?? []))]
 
   useEffect(() => {
     const h = () => setShowModal(true)
@@ -195,7 +208,30 @@ export default function Watchlist({ items, onUpsert, onDelete }) {
   const filtered = items.filter(item => {
     const matchSearch = !search || item.symbol.includes(search.toUpperCase()) || item.reason.toLowerCase().includes(search.toLowerCase())
     const matchStatus = statusFilter === 'all' || item.status === statusFilter
-    return matchSearch && matchStatus
+    const matchTag = tagFilter === 'all' || (item.tags ?? []).includes(tagFilter)
+    return matchSearch && matchStatus && matchTag
+  })
+
+  const pinnedCount = items.filter(i => i.pinned).length
+  const pinnedItems = filtered.filter(i => i.pinned)
+  const unpinnedItems = filtered.filter(i => !i.pinned)
+
+  const handlePinToggle = (item) => {
+    if (!item.pinned && pinnedCount >= 5) return
+    onUpsert({ ...item, pinned: !item.pinned })
+  }
+
+  const cardProps = (item) => ({
+    key: item.id,
+    item,
+    onEdit: () => handleEdit(item),
+    onDelete: () => onDelete(item.id),
+    onStatusCycle: () => onUpsert({ ...item, status: cycleStatus(item.status) }),
+    onLogTrade: () => document.dispatchEvent(new CustomEvent('td:prefill-log', { detail: { instrument: item.symbol, planTarget: item.target, planStop: item.stop, planThesis: item.reason } })),
+    activeTag: tagFilter,
+    onTagClick: t => setTagFilter(f => f === t ? 'all' : t),
+    onPinToggle: () => handlePinToggle(item),
+    pinnedCount,
   })
 
   const handleSave = (data) => {
@@ -239,6 +275,21 @@ export default function Watchlist({ items, onUpsert, onDelete }) {
             )
           })}
         </div>
+        {/* Tag filter row */}
+        {allTags.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', width: '100%' }}>
+            {['all', ...allTags].map(v => (
+              <button key={v} onClick={() => setTagFilter(v)} style={{
+                padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                background: tagFilter === v ? 'rgba(59,130,246,0.85)' : 'var(--surface-2)',
+                color: tagFilter === v ? '#fff' : 'var(--text-2)',
+                border: `1px solid ${tagFilter === v ? 'rgba(59,130,246,0.6)' : 'var(--border)'}`,
+              }}>
+                {v === 'all' ? 'All Tags' : `#${v}`}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Stats bar */}
@@ -263,18 +314,28 @@ export default function Watchlist({ items, onUpsert, onDelete }) {
           {items.length === 0 ? 'Your watchlist is empty. Press N or click "Add to Watchlist" to start.' : 'No matches for your filters.'}
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
-          {filtered.map(item => (
-            <WatchlistCard
-              key={item.id}
-              item={item}
-              onEdit={() => handleEdit(item)}
-              onDelete={() => onDelete(item.id)}
-              onStatusCycle={() => onUpsert({ ...item, status: cycleStatus(item.status) })}
-              onLogTrade={() => document.dispatchEvent(new CustomEvent('td:prefill-log', { detail: { instrument: item.symbol, planTarget: item.target, planStop: item.stop, planThesis: item.reason } }))}
-            />
-          ))}
-        </div>
+        <>
+          {pinnedItems.length > 0 && (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#d97706', textTransform: 'uppercase', letterSpacing: '0.06em' }}>📌 Pinned ({pinnedItems.length}/5)</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
+                {pinnedItems.map(item => <WatchlistCard {...cardProps(item)}/>)}
+              </div>
+            </div>
+          )}
+          {unpinnedItems.length > 0 && (
+            <div>
+              {pinnedItems.length > 0 && (
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>All</div>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
+                {unpinnedItems.map(item => <WatchlistCard {...cardProps(item)}/>)}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {showModal && (

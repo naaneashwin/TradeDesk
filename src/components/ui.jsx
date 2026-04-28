@@ -1,4 +1,4 @@
-export const uid = () => Math.random().toString(36).slice(2, 10)
+export const uid = () => crypto.randomUUID()
 export const fmt = (n, d = 2) => typeof n === 'number' ? n.toFixed(d) : '—'
 
 export function Modal({ title, subtitle, onClose, children }) {
