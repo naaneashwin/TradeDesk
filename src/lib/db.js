@@ -453,6 +453,41 @@ export async function getUserPreferencesFull() {
   }
 }
 
+// ── Logged Symbols (broker holdings marked as logged) ─────────
+// snapshot_key = "SYMBOL|EXCHANGE|QTY" — auto-invalidates when qty changes
+
+export async function getLoggedSymbols() {
+  const { data, error } = await supabase
+    .from('logged_symbols')
+    .select('snapshot_key, symbol, exchange, qty, logged_at')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function addLoggedSymbol(symbol, exchange, qty) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+  const snapshot_key = `${symbol}|${exchange ?? ''}|${qty ?? ''}`
+  const { error } = await supabase
+    .from('logged_symbols')
+    .upsert(
+      { user_id: user.id, snapshot_key, symbol, exchange: exchange ?? null, qty: qty ?? null },
+      { onConflict: 'user_id,snapshot_key' }
+    )
+  if (error) throw error
+}
+
+export async function removeLoggedSymbol(snapshotKey) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+  const { error } = await supabase
+    .from('logged_symbols')
+    .delete()
+    .eq('user_id', user.id)
+    .eq('snapshot_key', snapshotKey)
+  if (error) throw error
+}
+
 // ── Watchlist ─────────────────────────────────────────────────
 
 export async function getWatchlist() {

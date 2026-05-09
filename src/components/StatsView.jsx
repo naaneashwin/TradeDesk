@@ -390,8 +390,13 @@ function VariantPerformance({ trades, strats }) {
   )
 }
 
-export default function StatsView({ trades, strats }) {
+export default function StatsView({ trades, strats, totalInvestment, onSaveTotalInvestment }) {
   const [mockFilter, setMockFilter] = useState('all')
+  const [corpusInput, setCorpusInput] = useState(totalInvestment ?? '')
+  const [editingCorpus, setEditingCorpus] = useState(false)
+  const [savingCorpus, setSavingCorpus] = useState(false)
+
+  const corpusValue = parseFloat(totalInvestment) || null
 
   const filteredTrades = trades.filter(t => {
     if (mockFilter === 'mock') return !!t.mock
@@ -415,6 +420,11 @@ export default function StatsView({ trades, strats }) {
   const totalPnl  = filteredTrades.reduce((a, t) => a + (t.pnl || 0), 0)
   const totalComm = filteredTrades.reduce((a, t) => a + (t.commission || 0), 0)
   const netPnl    = totalPnl - totalComm
+
+  // Portfolio gain % = net P&L / investment corpus (user-defined)
+  const portfolioGainPct = (corpusValue != null && corpusValue > 0)
+    ? (netPnl / corpusValue) * 100
+    : null
   const wr        = filteredTrades.length ? (wins / filteredTrades.length * 100).toFixed(1) : '0'
   const avgWin    = wins   ? filteredTrades.filter(t => t.outcome === 'win').reduce((a, t) => a + (t.pnl || 0), 0) / wins : 0
   const avgLoss   = losses ? Math.abs(filteredTrades.filter(t => t.outcome === 'loss').reduce((a, t) => a + (t.pnl || 0), 0) / losses) : 0
@@ -463,10 +473,48 @@ export default function StatsView({ trades, strats }) {
   const pnlColor = totalPnl >= 0 ? 'var(--green)' : 'var(--red)'
   const netColor = netPnl  >= 0 ? 'var(--green)' : 'var(--red)'
 
+  const handleSaveCorpus = async () => {
+    setSavingCorpus(true)
+    try {
+      await onSaveTotalInvestment?.(corpusInput)
+      setEditingCorpus(false)
+    } finally {
+      setSavingCorpus(false)
+    }
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Mock filter toggle */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+      {/* Header: corpus editor + mock toggle */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        {/* Investment corpus */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 13, color: 'var(--text-2)', fontWeight: 500 }}>Investment corpus:</span>
+          {editingCorpus ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 13, color: 'var(--text-3)' }}>₹</span>
+              <input
+                type="number"
+                min="0"
+                value={corpusInput}
+                onChange={e => setCorpusInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleSaveCorpus(); if (e.key === 'Escape') setEditingCorpus(false) }}
+                autoFocus
+                style={{ width: 130, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--green)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13, fontFamily: 'JetBrains Mono, monospace', outline: 'none' }}
+              />
+              <button onClick={handleSaveCorpus} disabled={savingCorpus} style={{ padding: '5px 12px', borderRadius: 6, border: 'none', background: 'var(--green)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                {savingCorpus ? '…' : 'Save'}
+              </button>
+              <button onClick={() => setEditingCorpus(false)} style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'none', color: 'var(--text-2)', fontSize: 12, cursor: 'pointer' }}>
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => { setCorpusInput(totalInvestment ?? ''); setEditingCorpus(true) }} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', color: corpusValue ? 'var(--text)' : 'var(--text-3)', fontSize: 13, fontFamily: corpusValue ? 'JetBrains Mono, monospace' : 'Inter, sans-serif', cursor: 'pointer', fontWeight: corpusValue ? 600 : 400 }}>
+              {corpusValue ? `₹${fmt(corpusValue)}` : '+ Set corpus'}
+            </button>
+          )}
+        </div>
         <MockToggle value={mockFilter} onChange={setMockFilter} />
       </div>
 
@@ -474,6 +522,13 @@ export default function StatsView({ trades, strats }) {
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
         <SummaryCard label="Gross P&L"     value={`${totalPnl >= 0 ? '+' : ''}₹${fmt(totalPnl)}`} accent={pnlColor}/>
         {totalComm > 0 && <SummaryCard label="Net P&L (after commission)" value={`${netPnl >= 0 ? '+' : ''}₹${fmt(netPnl)}`} accent={netColor}/>}
+        {portfolioGainPct != null && (
+          <SummaryCard
+            label={`Portfolio Return (on ₹${fmt(corpusValue)})`}
+            value={`${portfolioGainPct >= 0 ? '+' : ''}${portfolioGainPct.toFixed(2)}%`}
+            accent={portfolioGainPct >= 0 ? 'var(--green)' : 'var(--red)'}
+          />
+        )}
         <SummaryCard label="Win Rate"      value={`${wr}%`}/>
         <SummaryCard label="Profit Factor" value={pf}/>
         <SummaryCard label="R Expectancy"  value={rExpectancy == null ? '—' : `${rExpectancy > 0 ? '+' : ''}${rExpectancy}R`} accent={rExpectancy == null ? undefined : rExpectancy > 0 ? 'var(--green)' : 'var(--red)'}/>

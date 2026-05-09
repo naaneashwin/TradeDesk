@@ -822,7 +822,7 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
       )}
 
       {logModal && strats.length > 0 && (
-        <LogModal strategy={strats[0]} prefill={prefill} onSave={trade => { onLogTrade(trade); setLogModal(false); setPrefill(null) }} onClose={() => { setLogModal(false); setPrefill(null) }} variant={null} score={{ done: 0, total: 0 }}/>
+        <LogModal strategy={strats[0]} strats={strats} prefill={prefill} onSave={trade => { onLogTrade(trade); setLogModal(false); setPrefill(null) }} onClose={() => { setLogModal(false); setPrefill(null) }} variant={null} score={{ done: 0, total: 0 }}/>
       )}
 
       {editTrade && (() => {

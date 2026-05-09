@@ -7,6 +7,8 @@ import {
   Navigate,
   useLocation,
 } from "react-router-dom";
+import { useKite } from "./hooks/useKite";
+import KitePanel from "./components/KitePanel";
 import {
   getStrategies,
   upsertStrategy,
@@ -22,6 +24,8 @@ import {
   getWatchlist,
   upsertWatchlistItem,
   deleteWatchlistItem,
+  getUserPreferencesFull,
+  upsertUserPreferences,
 } from "./lib/db";
 import { supabase } from "./lib/supabase";
 import Library from "./components/Library";
@@ -33,6 +37,104 @@ import ChecklistLibrary from "./components/ChecklistLibrary";
 import Login from "./components/Login";
 import OptionStrategies from "./components/OptionStrategies";
 import Watchlist from "./components/Watchlist";
+import TradeLog from "./components/TradeLog";
+
+// ── BrokerConnect page ────────────────────────────────────────
+function BrokerConnect({ connected, portfolio, loading, error, loginUrl, disconnect, refresh, strats, trades, onLogTrade }) {
+  const ALL_BROKERS = [
+    {
+      id: 'kite',
+      name: 'Zerodha Kite',
+      logo: '🟦',
+      description: "India's largest retail broker. Connect via Kite Connect API.",
+      connected,
+    },
+    { id: 'angelone', name: 'Angel One', logo: '😇', description: 'Connect via SmartAPI', connected: false, soon: true },
+    { id: 'upstox',   name: 'Upstox',    logo: '⬆️', description: 'Connect via Upstox API', connected: false, soon: true },
+    { id: 'fyers',    name: 'Fyers',     logo: '🔶', description: 'Connect via Fyers API', connected: false, soon: true },
+  ]
+
+  const connectedBrokers   = ALL_BROKERS.filter(b => b.connected)
+  const availableBrokers   = ALL_BROKERS.filter(b => !b.connected)
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+
+      {/* Connected brokers */}
+      {connectedBrokers.length > 0 && (
+        <div>
+          <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>Connected</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {connectedBrokers.map(b => (
+              <div key={b.id} style={{ background: 'var(--surface)', border: '1px solid rgba(45,122,95,0.35)', borderRadius: 14, padding: '20px 22px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                  <span style={{ fontSize: 28 }}>{b.logo}</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>{b.name}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{b.description}</div>
+                  </div>
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: 'rgba(45,122,95,0.1)', color: 'var(--green)', border: '1px solid rgba(45,122,95,0.25)' }}>Connected</span>
+                </div>
+                {b.id === 'kite' && (
+                  <KitePanel connected={connected} portfolio={portfolio} loading={loading} error={error} loginUrl={loginUrl} disconnect={disconnect} refresh={refresh} strats={strats} trades={trades} onLogTrade={onLogTrade} />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Not connected yet */}
+      {connectedBrokers.length === 0 && (
+        <div style={{ padding: '48px 0', textAlign: 'center', color: 'var(--text-3)' }}>
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 14 }}>
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+          </svg>
+          <p style={{ fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>No brokers connected</p>
+          <p style={{ fontSize: 13 }}>Add a broker below to get started.</p>
+        </div>
+      )}
+
+      {/* Available brokers to connect */}
+      <div>
+        <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>Add Broker</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
+          {availableBrokers.map(b => (
+            <div key={b.id} style={{
+              background: 'var(--surface)', border: '1px solid var(--border)',
+              borderRadius: 12, padding: '16px 18px',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+              opacity: b.soon ? 0.5 : 1,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 22 }}>{b.logo}</span>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text)' }}>{b.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{b.description}</div>
+                </div>
+              </div>
+              {b.id === 'kite' && !b.soon ? (
+                loginUrl ? (
+                  <a href={loginUrl} style={{
+                    padding: '6px 14px', background: '#387ed1', color: '#fff',
+                    borderRadius: 8, fontSize: 12, fontWeight: 600, textDecoration: 'none',
+                    whiteSpace: 'nowrap', fontFamily: 'Inter, sans-serif',
+                  }}>Connect</a>
+                ) : (
+                  <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Set API key</span>
+                )
+              ) : (
+                <span style={{ fontSize: 11, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>Coming soon</span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+    </div>
+  )
+}
 
 const NAV_ITEMS = [
   { id: "strategies", label: "Strategies", path: "/tradedesk/strategies" },
@@ -42,6 +144,8 @@ const NAV_ITEMS = [
   { id: "stats",      label: "Stats",      path: "/tradedesk/stats"      },
   { id: "calculator", label: "Calculator", path: "/tradedesk/calculator" },
   { id: "playbook",   label: "Playbook",   path: "/tradedesk/playbook"   },
+  { id: "tradeLog",   label: "Trade Log",  path: "/tradedesk/trade-log"  },
+  { id: "broker",     label: "Connect Broker", path: "/tradedesk/broker" },
 ];
 
 const PAGE_TITLES = {
@@ -52,6 +156,8 @@ const PAGE_TITLES = {
   stats:      "Statistics",
   calculator: "Calculator",
   playbook:   "Strategy Playbook",
+  tradeLog:   "Trade Log",
+  broker:     "Connect Broker",
 };
 
 const REQUIRED_COLS = [
@@ -205,6 +311,22 @@ function Icon({ name, size = 18, color = "currentColor", strokeWidth = 2 }) {
           <line x1="19" y1="5" x2="5" y2="19" />
         </svg>
       );
+    case "tradeLog":
+      return (
+        <svg {...s} viewBox="0 0 24 24" {...p}>
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <line x1="9" y1="9" x2="15" y2="9" />
+          <line x1="9" y1="12" x2="15" y2="12" />
+          <line x1="9" y1="15" x2="13" y2="15" />
+        </svg>
+      );
+    case "broker":
+      return (
+        <svg {...s} viewBox="0 0 24 24" {...p}>
+          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+        </svg>
+      );
     case "checklist":
       return (
         <svg {...s} viewBox="0 0 24 24" {...p}>
@@ -268,6 +390,7 @@ export default function App() {
   const [strats, setStrats] = useState([]);
   const [trades, setTrades] = useState([]);
   const [watchlistItems, setWatchlistItems] = useState([]);
+  const [userPrefs, setUserPrefs] = useState({});
   const [checklistItems, setChecklistItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState("idle");
@@ -280,6 +403,7 @@ export default function App() {
   const [importError, setImportError] = useState(null);
   const impRef = useRef(null);
   const loadedUserRef = useRef(null); // tracks which userId we've already loaded data for
+  const kite = useKite();
 
   const tab = location.pathname.split("/")[2] ?? "strategies";
 
@@ -364,6 +488,7 @@ export default function App() {
 
     // Watchlist fetched separately — migration may not exist yet
     getWatchlist().then(setWatchlistItems).catch(() => {});
+    getUserPreferencesFull().then(p => setUserPrefs(p ?? {})).catch(() => {});
   }, [session]);
 
   const withSync =
@@ -626,6 +751,8 @@ export default function App() {
     stats:      "stats",
     calculator: "calculator",
     playbook:   "playbook",
+    tradeLog:   "tradeLog",
+    broker:     "broker",
   };
 
   return (
@@ -742,7 +869,7 @@ export default function App() {
         {/* Nav items */}
         <nav style={{ flex: 1, padding: collapsed ? "8px 0" : "4px 8px" }}>
           {NAV_ITEMS.map(({ id, label, path }) => {
-            const isActive = tab === id;
+            const isActive = location.pathname === path || location.pathname.startsWith(path + '/');
             const iconName = navIconName[id];
             return (
               <button
@@ -1168,10 +1295,31 @@ export default function App() {
             />
             <Route
               path="/tradedesk/stats"
-              element={<StatsView trades={trades} strats={strats} />}
+              element={<StatsView trades={trades} strats={strats} totalInvestment={userPrefs.totalInvestment} onSaveTotalInvestment={async (val) => { await upsertUserPreferences({ ...userPrefs, totalInvestment: val }); setUserPrefs(p => ({ ...p, totalInvestment: val })) }} />}
             />
             <Route path="/tradedesk/calculator" element={<Calculator />} />
             <Route path="/tradedesk/playbook" element={<OptionStrategies />} />
+            <Route
+              path="/tradedesk/trade-log"
+              element={<TradeLog kite={kite} strats={strats} trades={trades} onLogTrade={handleInsertTrade} />}
+            />
+            <Route
+              path="/tradedesk/broker"
+              element={
+                <BrokerConnect
+                  connected={kite.connected}
+                  portfolio={kite.portfolio}
+                  loading={kite.loading}
+                  error={kite.error}
+                  loginUrl={kite.loginUrl}
+                  disconnect={kite.disconnect}
+                  refresh={kite.refresh}
+                  strats={strats}
+                  trades={trades}
+                  onLogTrade={handleInsertTrade}
+                />
+              }
+            />
             <Route
               path="*"
               element={<Navigate to="/tradedesk/strategies" replace />}

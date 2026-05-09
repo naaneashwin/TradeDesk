@@ -130,8 +130,11 @@ const PRESET_EXIT_STRATEGIES = [
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
-export default function LogModal({ strategy, onSave, onUpdate, onClose, variant, score, trade: editTrade, prefill }) {
+export default function LogModal({ strategy: initialStrategy, strats, onSave, onUpdate, onClose, variant, score, trade: editTrade, prefill }) {
   const isEdit = !!editTrade
+  const [selectedStrategy, setSelectedStrategy] = useState(initialStrategy)
+  // Keep in sync if parent changes the prop (e.g. when strats load async)
+  const strategy = selectedStrategy ?? initialStrategy
   const [customStrategies, setCustomStrategies] = useState([])
 
   useEffect(() => {
@@ -139,21 +142,21 @@ export default function LogModal({ strategy, onSave, onUpdate, onClose, variant,
   }, [])
 
   const [form, setForm] = useState({
-    date:          isEdit ? editTrade.date        : TODAY,
+    date:          isEdit ? editTrade.date        : (prefill?.date ?? TODAY),
     instrument:    isEdit ? editTrade.instrument  : (prefill?.instrument ?? ''),
-    direction:     isEdit ? editTrade.direction   : 'long',
-    entryPrice:    isEdit ? String(editTrade.entryPrice) : '',
+    direction:     isEdit ? editTrade.direction   : (prefill?.direction ?? 'long'),
+    entryPrice:    isEdit ? String(editTrade.entryPrice) : (prefill?.entryPrice ?? ''),
     stopLoss:      isEdit ? (editTrade.initialSl != null ? String(editTrade.initialSl) : '') : '',
-    qty:           isEdit ? String(editTrade.qty)        : '',
-    tradeType:     isEdit ? (editTrade.tradeType  ?? 'eq_delivery') : 'eq_delivery',
-    exchange:      isEdit ? (editTrade.exchange   ?? 'NSE')         : 'NSE',
+    qty:           isEdit ? String(editTrade.qty)        : (prefill?.qty ?? ''),
+    tradeType:     isEdit ? (editTrade.tradeType  ?? 'eq_delivery') : (prefill?.tradeType ?? 'eq_delivery'),
+    exchange:      isEdit ? (editTrade.exchange   ?? 'NSE')         : (prefill?.exchange ?? 'NSE'),
     commission:    isEdit ? (editTrade.commission != null ? String(editTrade.commission) : '') : '',
     commissionAuto: true, // auto-fill from brokerage calc unless user edits manually
     screenshotUrl: isEdit ? (editTrade.screenshotUrl ?? '') : '',
     planThesis:    isEdit ? (editTrade.planThesis  ?? '') : (prefill?.planThesis ?? ''),
     planTarget:    isEdit ? (editTrade.planTarget  != null ? String(editTrade.planTarget) : '') : (prefill?.planTarget != null ? String(prefill.planTarget) : ''),
     planStop:      isEdit ? (editTrade.planStop    != null ? String(editTrade.planStop)   : '') : (prefill?.planStop   != null ? String(prefill.planStop)   : ''),
-    notes:         isEdit ? (editTrade.notes || '')      : '',
+    notes:         isEdit ? (editTrade.notes || '')      : (prefill?.notes ?? ''),
     tags:          isEdit ? (editTrade.tags ?? []).join(', ') : '',
     mock:          isEdit ? (editTrade.mock ?? false)    : false,
   })
@@ -166,7 +169,7 @@ export default function LogModal({ strategy, onSave, onUpdate, onClose, variant,
         qty:          String(e.qty),
         exitStrategy: e.exitStrategy || '',
       }))
-    : [{ id: uid(), exitPrice: '', qty: '', exitDate: TODAY, exitStrategy: '' }]
+    : [{ id: uid(), exitPrice: '', qty: '', exitDate: prefill?.date ?? TODAY, exitStrategy: '' }]
 
   const [exits, setExits] = useState(defaultExits)
 
@@ -229,7 +232,7 @@ export default function LogModal({ strategy, onSave, onUpdate, onClose, variant,
     const filledExits = exitsCalc.filter(e => e.exitPrice && e.qty)
     return {
       id:             isEdit ? editTrade.id : uid(),
-      strategyId:     isEdit ? editTrade.strategyId     : strategy.id,
+      strategyId:     isEdit ? editTrade.strategyId     : (strategy?.id ?? null),
       variant:        isEdit ? editTrade.variant        : variant,
       checklistScore: isEdit ? editTrade.checklistScore : score,
       date:           form.date,
@@ -289,7 +292,27 @@ export default function LogModal({ strategy, onSave, onUpdate, onClose, variant,
   }
 
   return (
-    <Modal title={isEdit ? 'Edit Trade' : 'Log Trade'} subtitle={`${strategy.name}${variant ? ` · ${variant.toUpperCase()}` : ''} · Checklist ${score.done}/${score.total}`} onClose={onClose}>
+    <Modal title={isEdit ? 'Edit Trade' : 'Log Trade'} subtitle={null} onClose={onClose}>
+
+      {/* ── Strategy selector ─────────────────────────────── */}
+      <div style={{ marginBottom: 20 }}>
+        {strats && strats.length > 0 && !isEdit ? (
+          <div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Strategy</label>
+            <select
+              className="t-inp"
+              value={strategy?.id ?? ''}
+              onChange={e => setSelectedStrategy(strats.find(s => s.id === e.target.value) ?? strategy)}
+            >
+              {strats.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+        ) : (
+          <p style={{ fontSize: 12, color: 'var(--text-2)', fontFamily: 'JetBrains Mono, monospace', margin: 0 }}>
+            {strategy?.name}{variant ? ` · ${variant.toUpperCase()}` : ''} · Checklist {score.done}/{score.total}
+          </p>
+        )}
+      </div>
 
       {/* ── Checklist warning ─────────────────────────────── */}
       {checklistWarn && (
