@@ -464,10 +464,10 @@ export async function getLoggedSymbols() {
   return data ?? []
 }
 
-export async function addLoggedSymbol(symbol, exchange, qty) {
+export async function addLoggedSymbol(symbol, exchange, qty, avgPrice) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Not authenticated')
-  const snapshot_key = `${symbol}|${exchange ?? ''}|${qty ?? ''}`
+  const snapshot_key = `${symbol}|${exchange ?? ''}|${qty ?? ''}|${avgPrice ?? ''}`
   const { error } = await supabase
     .from('logged_symbols')
     .upsert(

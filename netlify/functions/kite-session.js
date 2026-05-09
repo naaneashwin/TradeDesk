@@ -25,8 +25,6 @@ export default async function handler(req) {
   const apiSecret = process.env.KITE_API_SECRET
 
   if (!apiKey || !apiSecret) {
-    console.log('Environment Variables:', { KITE_API_KEY: apiKey, KITE_API_SECRET: apiSecret }) // Log environment variables
-    console.log('All Environment Variables:', process.env) // Log all environment variables
     return new Response(
       JSON.stringify({ error: 'Kite API credentials not configured on server' }),
       { status: 500, headers: HEADERS }
@@ -36,7 +34,6 @@ export default async function handler(req) {
   let body
   try {
     body = await req.json()
-    console.log('Request Payload:', body) // Log request payload
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400, headers: HEADERS })
   }
@@ -48,12 +45,7 @@ export default async function handler(req) {
 
   try {
     const kc      = new KiteConnect({ api_key: apiKey })
-    console.log('Attempting to generate session with request_token:', request_token) // Log request token
-
     const session = await kc.generateSession(request_token, apiSecret)
-
-    console.log('Kite session response:', session) // Log raw response
-
     return new Response(JSON.stringify(session), { status: 200, headers: HEADERS })
   } catch (err) {
     console.error('Error generating Kite session:', {

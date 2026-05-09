@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#111827"/>
+  <!-- Chart line -->
+  <polyline
+    points="64,360 160,240 256,300 352,140 448,180"
+    fill="none"
+    stroke="#22c55e"
+    stroke-width="32"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <!-- Dots -->
+  <circle cx="64"  cy="360" r="18" fill="#22c55e"/>
+  <circle cx="160" cy="240" r="18" fill="#22c55e"/>
+  <circle cx="256" cy="300" r="18" fill="#22c55e"/>
+  <circle cx="352" cy="140" r="18" fill="#22c55e"/>
+  <circle cx="448" cy="180" r="18" fill="#22c55e"/>
+  <!-- T letter -->
+  <text x="256" y="460" font-family="Arial,sans-serif" font-size="80" font-weight="700" fill="#6b7280" text-anchor="middle">TradeDesk</text>
+</svg>

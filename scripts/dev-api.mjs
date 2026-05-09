@@ -19,10 +19,6 @@ const KITE_API_SECRET = process.env.KITE_API_SECRET
 
 const PORT = 8888
 
-// Log environment variables to verify
-console.log('KITE_API_KEY:', KITE_API_KEY);
-console.log('KITE_API_SECRET:', KITE_API_SECRET);
-
 // ── /api/symbols ──────────────────────────────────────────────
 async function handleSymbols(searchParams) {
   const q = searchParams.get('q')?.trim()

@@ -37,7 +37,7 @@ import ChecklistLibrary from "./components/ChecklistLibrary";
 import Login from "./components/Login";
 import OptionStrategies from "./components/OptionStrategies";
 import Watchlist from "./components/Watchlist";
-import TradeLog from "./components/TradeLog";
+
 
 // ── BrokerConnect page ────────────────────────────────────────
 function BrokerConnect({ connected, portfolio, loading, error, loginUrl, disconnect, refresh, strats, trades, onLogTrade }) {
@@ -144,7 +144,6 @@ const NAV_ITEMS = [
   { id: "stats",      label: "Stats",      path: "/tradedesk/stats"      },
   { id: "calculator", label: "Calculator", path: "/tradedesk/calculator" },
   { id: "playbook",   label: "Playbook",   path: "/tradedesk/playbook"   },
-  { id: "tradeLog",   label: "Trade Log",  path: "/tradedesk/trade-log"  },
   { id: "broker",     label: "Connect Broker", path: "/tradedesk/broker" },
 ];
 
@@ -156,7 +155,6 @@ const PAGE_TITLES = {
   stats:      "Statistics",
   calculator: "Calculator",
   playbook:   "Strategy Playbook",
-  tradeLog:   "Trade Log",
   broker:     "Connect Broker",
 };
 
@@ -309,15 +307,6 @@ function Icon({ name, size = 18, color = "currentColor", strokeWidth = 2 }) {
           <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
           <circle cx="12" cy="12" r="3" />
           <line x1="19" y1="5" x2="5" y2="19" />
-        </svg>
-      );
-    case "tradeLog":
-      return (
-        <svg {...s} viewBox="0 0 24 24" {...p}>
-          <rect x="3" y="3" width="18" height="18" rx="2" />
-          <line x1="9" y1="9" x2="15" y2="9" />
-          <line x1="9" y1="12" x2="15" y2="12" />
-          <line x1="9" y1="15" x2="13" y2="15" />
         </svg>
       );
     case "broker":
@@ -751,7 +740,6 @@ export default function App() {
     stats:      "stats",
     calculator: "calculator",
     playbook:   "playbook",
-    tradeLog:   "tradeLog",
     broker:     "broker",
   };
 
@@ -1299,10 +1287,6 @@ export default function App() {
             />
             <Route path="/tradedesk/calculator" element={<Calculator />} />
             <Route path="/tradedesk/playbook" element={<OptionStrategies />} />
-            <Route
-              path="/tradedesk/trade-log"
-              element={<TradeLog kite={kite} strats={strats} trades={trades} onLogTrade={handleInsertTrade} />}
-            />
             <Route
               path="/tradedesk/broker"
               element={

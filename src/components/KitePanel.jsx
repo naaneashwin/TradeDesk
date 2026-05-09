@@ -1,8 +1,29 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import LogModal from './LogModal'
 import { getLoggedSymbols, addLoggedSymbol, removeLoggedSymbol } from '../lib/db'
 
 const TODAY = new Date().toISOString().slice(0, 10)
+
+// Pure helper — stable reference, safe to use in effects without listing as dep
+const snapshotKey = (symbol, exchange, qty, avgPrice) =>
+  `${symbol}|${exchange ?? ''}|${qty ?? ''}|${avgPrice ?? ''}`
+
+// Build the set of all snapshot keys that currently exist in a live portfolio
+function buildLiveKeys(portfolio) {
+  const keys = new Set()
+  const netPos = portfolio?.positions?.net ?? []
+  const dayPos = portfolio?.positions?.day ?? []
+  const positions = netPos.length ? netPos : dayPos
+  for (const p of positions) {
+    if ((p.quantity === 0) && (p.t1_quantity ?? 0) === 0) continue
+    const effectiveQty = p.quantity !== 0 ? p.quantity : (p.t1_quantity ?? 0)
+    keys.add(snapshotKey(p.tradingsymbol, p.exchange, Math.abs(effectiveQty), p.average_price))
+  }
+  for (const h of (portfolio?.holdings ?? [])) {
+    keys.add(snapshotKey(h.tradingsymbol, h.exchange, h.quantity, h.average_price))
+  }
+  return keys
+}
 
 const fmt = (n) =>
   n == null ? '—' : new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(n)
@@ -38,12 +59,14 @@ function MarginCard({ label, value }) {
 
 export default function KitePanel({ connected, portfolio, loading, error, loginUrl, disconnect, refresh, onLogTrade, strats, trades }) {
   const [expanded, setExpanded] = useState(true)
-  const [holdingsOpen, setHoldingsOpen] = useState(true)
-  const [mfOpen, setMfOpen] = useState(true)
+  const [holdingsOpen, setHoldingsOpen] = useState(false)
+  const [mfOpen, setMfOpen] = useState(false)
   const [logPrefill, setLogPrefill] = useState(null)
   // loggedKeys: Set of snapshot_keys ("SYMBOL|EXCHANGE|QTY") persisted in DB
   // Auto-invalidates when qty changes (key won't match the new snapshot)
   const [loggedKeys, setLoggedKeys] = useState(new Set())
+  // Stable ref so the reconciliation effect always sees current loggedKeys
+  const loggedKeysRef = useRef(new Set())
 
   useEffect(() => {
     getLoggedSymbols()
@@ -51,10 +74,28 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
       .catch(() => {})
   }, [])
 
-  const snapshotKey = (symbol, exchange, qty) => `${symbol}|${exchange ?? ''}|${qty ?? ''}`
+  // Keep ref in sync with state
+  useEffect(() => { loggedKeysRef.current = loggedKeys }, [loggedKeys])
 
-  const toggleManualLog = async (symbol, exchange, qty) => {
-    const key = snapshotKey(symbol, exchange, qty)
+  // ── Reconciliation ────────────────────────────────────────
+  // When fresh portfolio data arrives, purge any logged marks whose position no
+  // longer exists (e.g. the user sold the stock between sessions). This ensures
+  // that selling and re-buying the same stock always starts with a clean slate.
+  useEffect(() => {
+    if (!portfolio || loggedKeysRef.current.size === 0) return
+    const liveKeys = buildLiveKeys(portfolio)
+    const stale = [...loggedKeysRef.current].filter(k => !liveKeys.has(k))
+    if (stale.length === 0) return
+    setLoggedKeys(prev => {
+      const next = new Set(prev)
+      stale.forEach(k => next.delete(k))
+      return next
+    })
+    stale.forEach(k => removeLoggedSymbol(k).catch(() => {}))
+  }, [portfolio])
+
+  const toggleManualLog = async (symbol, exchange, qty, avgPrice) => {
+    const key = snapshotKey(symbol, exchange, qty, avgPrice)
     const isNowLogged = !loggedKeys.has(key)
     // Optimistic update
     setLoggedKeys(prev => {
@@ -64,7 +105,7 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
       return next
     })
     try {
-      if (isNowLogged) await addLoggedSymbol(symbol, exchange, qty)
+      if (isNowLogged) await addLoggedSymbol(symbol, exchange, qty, avgPrice)
       else await removeLoggedSymbol(key)
     } catch {
       // Revert on failure
@@ -139,10 +180,10 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
   const holdingsInvested = holdings.reduce((sum, h) => sum + ((h.average_price ?? 0) * (h.quantity ?? 0)), 0)
   const holdingsTotalPct = holdingsInvested > 0 ? (holdingsPnl / holdingsInvested) * 100 : null
   const todayLoggedSymbols = new Set((trades ?? []).filter(t => t.date === TODAY).map(t => t.instrument))
-  const isLogged = (sym, exchange, qty) => todayLoggedSymbols.has(sym) || loggedKeys.has(snapshotKey(sym, exchange, qty))
+  const isLogged = (sym, exchange, qty, avgPrice) => todayLoggedSymbols.has(sym) || loggedKeys.has(snapshotKey(sym, exchange, qty, avgPrice))
   const mfHoldings     = portfolio?.mfHoldings ?? []
-  const mfValue        = mfHoldings.reduce((sum, h) => sum + (h.last_value ?? h.current_value ?? 0), 0)
-  const mfInvested     = mfHoldings.reduce((sum, h) => sum + (h.average_value ?? h.invested_value ?? 0), 0)
+  const mfValue        = mfHoldings.reduce((sum, h) => sum + (h.last_price ?? 0) * (h.quantity ?? 0), 0)
+  const mfInvested     = mfHoldings.reduce((sum, h) => sum + (h.average_price ?? 0) * (h.quantity ?? 0), 0)
   const mfPnl          = mfValue - mfInvested
   const mfTotalPct     = mfInvested > 0 ? (mfPnl / mfInvested) * 100 : null
 
@@ -244,7 +285,7 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
                           <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text)' }}>₹{fmt(p.last_price)}</td>
                           <td style={{ padding: '8px 10px', textAlign: 'right' }}><PnlText value={p.pnl} /></td>
                           <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                            {onLogTrade && !isLogged(p.tradingsymbol, p.exchange, Math.abs(effectiveQty)) && (
+                            {onLogTrade && !isLogged(p.tradingsymbol, p.exchange, Math.abs(effectiveQty), p.average_price) && (
                               <button
                                 title="Log this trade"
                                 onClick={() => setLogPrefill({
@@ -260,10 +301,10 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
                                 style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', color: 'var(--green)', fontSize: 14, width: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
                               >+</button>
                             )}
-                            {onLogTrade && isLogged(p.tradingsymbol, p.exchange, Math.abs(effectiveQty)) && (
+                            {onLogTrade && isLogged(p.tradingsymbol, p.exchange, Math.abs(effectiveQty), p.average_price) && (
                               <button
-                                title={loggedKeys.has(snapshotKey(p.tradingsymbol, p.exchange, Math.abs(effectiveQty))) ? 'Manually marked — click to unmark' : 'Logged in Trade Log — click to unmark'}
-                                onClick={() => toggleManualLog(p.tradingsymbol, p.exchange, Math.abs(effectiveQty))}
+                                title={loggedKeys.has(snapshotKey(p.tradingsymbol, p.exchange, Math.abs(effectiveQty), p.average_price)) ? 'Manually marked — click to unmark' : 'Logged in Trade Log — click to unmark'}
+                                onClick={() => toggleManualLog(p.tradingsymbol, p.exchange, Math.abs(effectiveQty), p.average_price)}
                                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', fontSize: 13, padding: 0 }}
                               >✓</button>
                             )}
@@ -334,7 +375,7 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
                             {returnPct == null ? '—' : `${returnPct >= 0 ? '+' : ''}${returnPct.toFixed(2)}%`}
                           </td>
                           <td style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                            {onLogTrade && !isLogged(h.tradingsymbol, h.exchange, h.quantity) && (
+                            {onLogTrade && !isLogged(h.tradingsymbol, h.exchange, h.quantity, h.average_price) && (
                               <>
                                 <button
                                   title="Log this holding"
@@ -352,15 +393,15 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
                                 >+</button>
                                 <button
                                   title="Mark as already logged (without opening modal)"
-                                  onClick={() => toggleManualLog(h.tradingsymbol, h.exchange, h.quantity)}
+                                  onClick={() => toggleManualLog(h.tradingsymbol, h.exchange, h.quantity, h.average_price)}
                                   style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', color: 'var(--text-3)', fontSize: 10, padding: '2px 6px', marginLeft: 4, fontFamily: 'Inter, sans-serif' }}
                                 >✓</button>
                               </>
                             )}
-                            {onLogTrade && isLogged(h.tradingsymbol, h.exchange, h.quantity) && (
+                            {onLogTrade && isLogged(h.tradingsymbol, h.exchange, h.quantity, h.average_price) && (
                               <button
-                                title={loggedKeys.has(snapshotKey(h.tradingsymbol, h.exchange, h.quantity)) ? 'Manually marked — click to unmark' : 'Logged in Trade Log — click to unmark'}
-                                onClick={() => toggleManualLog(h.tradingsymbol, h.exchange, h.quantity)}
+                                title={loggedKeys.has(snapshotKey(h.tradingsymbol, h.exchange, h.quantity, h.average_price)) ? 'Manually marked — click to unmark' : 'Logged in Trade Log — click to unmark'}
+                                onClick={() => toggleManualLog(h.tradingsymbol, h.exchange, h.quantity, h.average_price)}
                                 style={{ background: 'none', border: '1px solid rgba(45,122,95,0.3)', borderRadius: 6, cursor: 'pointer', color: 'var(--green)', fontSize: 11, padding: '2px 7px', fontFamily: 'Inter, sans-serif', fontWeight: 600 }}
                               >✓ Logged</button>
                             )}
@@ -418,8 +459,8 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
                   </thead>
                   <tbody>
                     {mfHoldings.map((h, i) => {
-                      const invested   = h.average_value ?? h.invested_value ?? (h.average_price ?? 0) * (h.quantity ?? 0)
-                      const currentVal = h.last_value ?? h.current_value ?? (h.last_price ?? 0) * (h.quantity ?? 0)
+                      const invested   = (h.average_price ?? 0) * (h.quantity ?? 0)
+                      const currentVal = (h.last_price ?? 0) * (h.quantity ?? 0)
                       const pnl        = currentVal - invested
                       const returnPct  = invested > 0 ? (pnl / invested) * 100 : null
                       const units      = h.quantity ?? h.units ?? 0
