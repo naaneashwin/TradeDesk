@@ -626,7 +626,7 @@ function CalcPicker({ selected, onSelect }) {
   return (
     <div style={{ marginBottom: 24 }}>
       {/* Category tab bar */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+      <div className="scroll-x" style={{ marginBottom: 14, paddingBottom: 4 }}>
         {CALC_GROUPS.map(g => {
           const isActive = g.id === activeGroup
           const hasSelected = g.calcs.includes(selected)
@@ -656,7 +656,7 @@ function CalcPicker({ selected, onSelect }) {
       </div>
 
       {/* Strategy cards for active group */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div className="scroll-x" style={{ paddingBottom: 4 }}>
         {group.calcs.map(id => {
           const c = CALC_BY_ID[id]
           if (!c) return null
@@ -743,7 +743,7 @@ export default function Calculator() {
       {isComparator ? (
         <SimSpotProvider key={`${selected}-${resetKey}`}><CalcComponent key={`${selected}-${resetKey}`} /></SimSpotProvider>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 28, alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))", gap: 28, alignItems: "start" }}>
           <SimSpotProvider key={`${selected}-${resetKey}`}><CalcComponent key={`${selected}-${resetKey}`} direction={direction} /></SimSpotProvider>
           <InfoPanel calcId={selected} direction={direction} onDirectionChange={handleDirectionChange} />
         </div>

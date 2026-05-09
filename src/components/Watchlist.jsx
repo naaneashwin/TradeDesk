@@ -59,7 +59,7 @@ function WatchlistModal({ item, onSave, onClose }) {
 
   return (
     <Modal title={isEdit ? `Edit — ${item.symbol}` : 'Add to Watchlist'} onClose={onClose}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: 14, marginBottom: 16 }}>
         <Field label="Symbol">
           <input className="t-inp font-mono" style={{ textTransform: 'uppercase' }} value={form.symbol} onChange={e => set('symbol', e.target.value)} placeholder="e.g. RELIANCE" autoFocus={!isEdit}/>
         </Field>
@@ -105,7 +105,7 @@ function WatchlistCard({ item, onEdit, onDelete, onStatusCycle, onLogTrade, acti
       opacity: item.status === 'removed' ? 0.55 : 1,
     }}>
       {/* Header row */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
             <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', fontFamily: 'JetBrains Mono, monospace' }}>{item.symbol}</span>
@@ -253,34 +253,37 @@ export default function Watchlist({ items, onUpsert, onDelete }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Toolbar */}
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <input
-          value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Search symbols or notes…"
-          style={{ flex: 1, minWidth: 180, padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, color: 'var(--text)', background: 'var(--surface-2)', outline: 'none', fontFamily: 'Inter, sans-serif' }}
-        />
-        <div style={{ display: 'flex', gap: 6 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input
+            value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search symbols or notes…"
+            style={{ flex: 1, minWidth: 0, padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, color: 'var(--text)', background: 'var(--surface-2)', outline: 'none', fontFamily: 'Inter, sans-serif' }}
+          />
+        </div>
+        {/* Status filter */}
+        <div className="scroll-x">
           {['all', ...STATUS_ORDER].map(v => {
             const m = v === 'all' ? null : statusMeta(v)
             const active = statusFilter === v
             return (
               <button key={v} onClick={() => setStatusFilter(v)} style={{
-                padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
-                background: active ? (m?.bg ?? 'var(--green)') : 'var(--surface-2)',
-                color: active ? (m?.color ?? '#fff') : 'var(--text-2)',
-                border: `1px solid ${active ? (m?.border ?? 'var(--green)') : 'var(--border)'}`,
+                padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif', flexShrink: 0,
+                background: active ? (m?.bg ?? 'var(--surface-2)') : 'var(--surface-2)',
+                color: active ? (m?.color ?? 'var(--text)') : 'var(--text-2)',
+                border: `1px solid ${active ? (m?.border ?? 'var(--border)') : 'var(--border)'}`,
               }}>
                 {v === 'all' ? 'All' : m.label}
               </button>
             )
           })}
         </div>
-        {/* Tag filter row */}
+        {/* Tag filter */}
         {allTags.length > 0 && (
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', width: '100%' }}>
+          <div className="scroll-x">
             {['all', ...allTags].map(v => (
               <button key={v} onClick={() => setTagFilter(v)} style={{
-                padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif', flexShrink: 0,
                 background: tagFilter === v ? 'rgba(59,130,246,0.85)' : 'var(--surface-2)',
                 color: tagFilter === v ? '#fff' : 'var(--text-2)',
                 border: `1px solid ${tagFilter === v ? 'rgba(59,130,246,0.6)' : 'var(--border)'}`,
@@ -294,7 +297,7 @@ export default function Watchlist({ items, onUpsert, onDelete }) {
 
       {/* Stats bar */}
       {items.length > 0 && (
-        <div style={{ display: 'flex', gap: 16 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           {STATUS_OPTS.map(s => {
             const count = items.filter(i => i.status === s.v).length
             if (!count) return null
@@ -320,7 +323,7 @@ export default function Watchlist({ items, onUpsert, onDelete }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: '#d97706', textTransform: 'uppercase', letterSpacing: '0.06em' }}>📌 Pinned ({pinnedItems.length}/5)</span>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 340px), 1fr))', gap: 16 }}>
                 {pinnedItems.map(item => <WatchlistCard {...cardProps(item)}/>)}
               </div>
             </div>
@@ -330,7 +333,7 @@ export default function Watchlist({ items, onUpsert, onDelete }) {
               {pinnedItems.length > 0 && (
                 <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>All</div>
               )}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 340px), 1fr))', gap: 16 }}>
                 {unpinnedItems.map(item => <WatchlistCard {...cardProps(item)}/>)}
               </div>
             </div>

@@ -19,6 +19,7 @@
   --red:         #dc2626;
   --red-light:   #fef2f2;
   --navy:        #1e2a4a;
+  --bottom-nav-h: 0px;
 }
 
 /* ── Dark mode tokens ── */
@@ -42,6 +43,11 @@
 
 * { box-sizing: border-box; }
 
+html, body {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
 body {
   background-color: var(--bg);
   color: var(--text);
@@ -58,7 +64,6 @@ body {
 ::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 10px; }
 
 /* Input */
-/* Prevent number inputs from changing value on scroll */
 input[type=number] { -moz-appearance: textfield; }
 input[type=number]::-webkit-outer-spin-button,
 input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
@@ -108,3 +113,92 @@ input[type=number]:focus { outline: none; }
   font-family: 'Inter', sans-serif;
 }
 .btn-outline:hover { background: var(--surface-2); }
+
+/* ── Responsive scroll strip (tab bars, pill rows) ── */
+.scroll-x {
+  display: flex;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  gap: 6px;
+}
+.scroll-x::-webkit-scrollbar { display: none; }
+.scroll-x > * { flex-shrink: 0; }
+
+/* ── Responsive grid helpers ── */
+.resp-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 14px;
+}
+.resp-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 16px;
+}
+
+/* ── Table scroll wrapper ── */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Mobile-only / Desktop-only ── */
+.mobile-only  { display: none; }
+.desktop-only { display: flex; }
+
+/* ── Bottom nav active indicator ── */
+.bnav-btn[data-active="true"] {
+  background: var(--green-light);
+  color: var(--green);
+}
+.bnav-btn[data-active="true"] svg {
+  stroke: var(--green);
+}
+.bnav-btn[data-active="true"]::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 28px;
+  height: 2.5px;
+  border-radius: 0 0 3px 3px;
+  background: var(--green);
+}
+
+/* ── Mobile breakpoint ── */
+@media (max-width: 1023px) {
+  :root { --bottom-nav-h: 64px; }
+
+  .mobile-only  { display: flex; }
+  .desktop-only { display: none !important; }
+
+  /* Modal becomes bottom sheet */
+  .modal-overlay {
+    align-items: flex-end !important;
+    padding: 0 !important;
+  }
+  .modal-box {
+    border-radius: 20px 20px 0 0 !important;
+    max-height: 92vh !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 20px 16px 32px !important;
+  }
+  .modal-drag-handle { display: block !important; }
+
+  /* Flex rows wrap */
+  .resp-row { flex-wrap: wrap; }
+  .resp-row > * { flex: 1 1 140px; min-width: 0; }
+}
+
+/* Drag handle (hidden on desktop) */
+.modal-drag-handle {
+  display: none;
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-2);
+  margin: 0 auto 16px;
+}

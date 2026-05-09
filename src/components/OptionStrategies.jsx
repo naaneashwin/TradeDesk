@@ -419,10 +419,7 @@ export default function OptionStrategies() {
       </div>
 
       {/* View filter tab bar */}
-      <div style={{
-        display: "flex",
-        gap: 8,
-        flexWrap: "wrap",
+      <div className="scroll-x" style={{
         marginBottom: 28,
         padding: "14px 18px",
         background: "var(--surface)",
@@ -464,7 +461,7 @@ export default function OptionStrategies() {
       {/* Strategy grid */}
       <div style={{
         display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+        gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 300px), 1fr))",
         gap: 18,
       }}>
         {filtered.map((strategy) => (

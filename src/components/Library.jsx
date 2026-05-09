@@ -50,7 +50,7 @@ function StatSummaryCard({ label, value, accent }) {
         border: "1px solid var(--border)",
         borderRadius: 12,
         padding: "20px 24px",
-        flex: 1,
+        flex: "1 1 min(100%, 180px)",
       }}
     >
       <p style={{ fontSize: 13, color: "var(--text-2)", marginBottom: 8 }}>
@@ -205,15 +205,8 @@ export default function Library({
   return (
     <div>
       {/* Summary stat cards */}
-      <div style={{ display: "flex", gap: 16, marginBottom: 28, alignItems: "center", flexWrap: "wrap" }}>
-        <StatSummaryCard label="Total Strategies" value={strats.length} />
-        <StatSummaryCard
-          label="Active Strategies"
-          value={activeCount}
-          accent="var(--green)"
-        />
-        <StatSummaryCard label="Total Trades Logged" value={totalTrades} />
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+        <div style={{ display: 'flex', gap: 6 }}>
           {[{ v: 'all', label: 'All Trades' }, { v: 'real', label: 'Real' }, { v: 'mock', label: 'Mock' }].map(({ v, label }) => (
             <button key={v} onClick={() => setMockFilter(v)}
               style={{ padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
@@ -225,12 +218,21 @@ export default function Library({
           ))}
         </div>
       </div>
+      <div style={{ display: "flex", gap: 16, marginBottom: 28, flexWrap: "wrap" }}>
+        <StatSummaryCard label="Total Strategies" value={strats.length} />
+        <StatSummaryCard
+          label="Active Strategies"
+          value={activeCount}
+          accent="var(--green)"
+        />
+        <StatSummaryCard label="Total Trades Logged" value={totalTrades} />
+      </div>
 
       {/* Strategy cards grid */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 340px), 1fr))",
           gap: 20,
         }}
       >
@@ -651,7 +653,7 @@ function StrategyModal({ strategy, checklistItems = [], onUpsertChecklistItem, o
             onChange={(e) => setDesc(e.target.value)}
             placeholder="Briefly describe when you use this strategy…"
           />
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
             <button
               className="btn-outline"
               style={{ padding: "11px 24px", fontSize: 15 }}

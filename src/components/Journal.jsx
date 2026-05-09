@@ -280,47 +280,47 @@ function FilterPanel({ strats, filters, setFilters, exitStrategies, allTags, onC
 
 // ── Date range panel ─────────────────────────────────────────
 function DatePanel({ dateRange, setDateRange, onClose }) {
-  const ref = useRef()
-  useEffect(() => {
-    const h = e => { if (ref.current && !ref.current.contains(e.target)) onClose() }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [onClose])
+  const presets = [
+    { label: 'Last 7d',  days: 7  },
+    { label: 'Last 30d', days: 30 },
+    { label: 'Last 90d', days: 90 },
+    { label: 'All time', days: 0  },
+  ]
   return (
-    <div ref={ref} style={{
-      position: 'absolute', top: '100%', left: 0, marginTop: 6, zIndex: 100,
-      background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12,
-      boxShadow: '0 8px 32px rgba(0,0,0,0.12)', padding: 16, minWidth: 280,
+    <div style={{
+      background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10,
+      padding: '12px 14px', marginTop: 4,
     }}>
-      <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
         <div style={{ flex: 1 }}>
-          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>From</label>
+          <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>From</label>
           <input type="date" value={dateRange.from} onChange={e => setDateRange(d => ({ ...d, from: e.target.value }))}
-            style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, color: 'var(--text)', background: 'var(--surface-2)', outline: 'none', fontFamily: 'Inter, sans-serif' }}/>
+            style={{ width: '100%', padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 7, fontSize: 13, color: 'var(--text)', background: 'var(--surface)', outline: 'none', fontFamily: 'Inter, sans-serif', boxSizing: 'border-box' }}/>
         </div>
         <div style={{ flex: 1 }}>
-          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>To</label>
+          <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>To</label>
           <input type="date" value={dateRange.to} onChange={e => setDateRange(d => ({ ...d, to: e.target.value }))}
-            style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, color: 'var(--text)', background: 'var(--surface-2)', outline: 'none', fontFamily: 'Inter, sans-serif' }}/>
+            style={{ width: '100%', padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 7, fontSize: 13, color: 'var(--text)', background: 'var(--surface)', outline: 'none', fontFamily: 'Inter, sans-serif', boxSizing: 'border-box' }}/>
         </div>
       </div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        {[
-          { label: 'Last 7d',  days: 7  },
-          { label: 'Last 30d', days: 30 },
-          { label: 'Last 90d', days: 90 },
-          { label: 'All time', days: 0  },
-        ].map(({ label, days }) => (
+        {presets.map(({ label, days }) => (
           <button key={label} onClick={() => {
             if (days === 0) { setDateRange({ from: '', to: '' }); return }
             const to = new Date(), from = new Date()
             from.setDate(from.getDate() - days)
             setDateRange({ from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) })
           }}
-            style={{ padding: '5px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer', fontFamily: 'Inter, sans-serif', background: 'var(--surface-2)', color: 'var(--text-2)', border: '1px solid var(--border)' }}>
+            style={{ padding: '4px 11px', borderRadius: 20, fontSize: 12, cursor: 'pointer', fontFamily: 'Inter, sans-serif', background: 'var(--surface)', color: 'var(--text-2)', border: '1px solid var(--border)' }}>
             {label}
           </button>
         ))}
+        {(dateRange.from || dateRange.to) && (
+          <button onClick={() => { setDateRange({ from: '', to: '' }); onClose() }}
+            style={{ padding: '4px 11px', borderRadius: 20, fontSize: 12, cursor: 'pointer', fontFamily: 'Inter, sans-serif', background: 'none', color: 'var(--red)', border: '1px solid var(--red)' }}>
+            Clear
+          </button>
+        )}
       </div>
     </div>
   )
@@ -335,12 +335,19 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
   const [toDelete,   setToDelete]   = useState(null)
   const [editTrade,  setEditTrade]  = useState(null)
   const [logModal,   setLogModal]   = useState(false)
-  const [prefill,    setPrefill]    = useState(null)   // { instrument, planTarget, planStop, planThesis }
+  const [prefill,    setPrefill]    = useState(null)
   const [expanded,   setExpanded]   = useState(new Set())
-  const [livePrices, setLivePrices] = useState({}) // { [tradeId]: { ltp, pnl, change, changePct } }
+  const [livePrices, setLivePrices] = useState({})
   const toggleExpand = id => setExpanded(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
   const [showFilter, setShowFilter] = useState(false)
   const [showDate,   setShowDate]   = useState(false)
+  const [isMobile,   setIsMobile]   = useState(() => window.innerWidth < 1024)
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 1024)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   useEffect(() => {
     const h = () => setLogModal(true)
@@ -356,7 +363,6 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
 
   // ── Live price polling for open + real trades ──────────────
   const fetchLivePrices = useCallback(async () => {
-    // Skip price fetching in local development — Netlify functions aren't available
     if (import.meta.env.DEV) return
 
     const openReal = trades.filter(t => t.outcome === 'open' && !t.mock && t.instrument && t.entryPrice)
@@ -485,59 +491,130 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
   return (
     <div>
       {/* Toolbar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        {/* Search */}
-        <div style={{ position: 'relative', flex: '0 0 240px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+        {/* Row 1: Search (full width) */}
+        <div style={{ position: 'relative' }}>
           <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', display: 'flex' }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </span>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search ticker..."
-            style={{ width: '100%', padding: '8px 12px 8px 30px', border: '1px solid var(--border)', borderRadius: 9, fontSize: 13, color: 'var(--text)', background: 'var(--surface)', outline: 'none', fontFamily: 'Inter, sans-serif' }}/>
+            style={{ width: '100%', padding: '8px 12px 8px 30px', border: '1px solid var(--border)', borderRadius: 9, fontSize: 13, color: 'var(--text)', background: 'var(--surface)', outline: 'none', fontFamily: 'Inter, sans-serif', boxSizing: 'border-box' }}/>
         </div>
 
-        {/* Filter */}
-        <div style={{ position: 'relative' }}>
-          <button className="btn-outline" onClick={() => { setShowFilter(v => !v); setShowDate(false) }}
-            style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 9, position: 'relative' }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-            Filter
-            {activeFilterCount > 0 && (
-              <span style={{ position: 'absolute', top: -6, right: -6, width: 16, height: 16, borderRadius: '50%', background: 'var(--green)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{activeFilterCount}</span>
-            )}
+        {/* Row 2: Filter | Date | count | Export */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {/* Filter */}
+          <div style={{ position: 'relative' }}>
+            <button className="btn-outline" onClick={() => { setShowFilter(v => !v); setShowDate(false) }}
+              style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 9, position: 'relative' }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+              Filter
+              {activeFilterCount > 0 && (
+                <span style={{ position: 'absolute', top: -6, right: -6, width: 16, height: 16, borderRadius: '50%', background: 'var(--green)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{activeFilterCount}</span>
+              )}
+            </button>
+            {showFilter && <FilterPanel strats={strats} filters={filters} setFilters={setFilters} exitStrategies={allExitStrategies} allTags={allTags} onClose={() => setShowFilter(false)}/>}
+          </div>
+
+          {/* Date Range */}
+          <div style={{ position: 'relative' }}>
+            <button className="btn-outline" onClick={() => { setShowDate(v => !v); setShowFilter(false) }}
+              style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 9, color: (dateRange.from || dateRange.to) ? 'var(--green)' : undefined, borderColor: (dateRange.from || dateRange.to) ? 'var(--green)' : undefined, whiteSpace: 'nowrap' }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              {dateRange.from
+                ? `${dateRange.from.slice(5).replace('-','/')}${dateRange.to ? ` → ${dateRange.to.slice(5).replace('-','/')}` : ''}`
+                : 'Date'}
+            </button>
+          </div>
+
+          <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{processed.length} trade{processed.length !== 1 ? 's' : ''}</span>
+
+          {/* Export */}
+          <button onClick={exportCSV} className="btn-outline"
+            style={{ marginLeft: 'auto', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 9, whiteSpace: 'nowrap' }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Export
           </button>
-          {showFilter && <FilterPanel strats={strats} filters={filters} setFilters={setFilters} exitStrategies={allExitStrategies} allTags={allTags} onClose={() => setShowFilter(false)}/>}
         </div>
 
-        {/* Date Range */}
-        <div style={{ position: 'relative' }}>
-          <button className="btn-outline" onClick={() => { setShowDate(v => !v); setShowFilter(false) }}
-            style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 9, color: (dateRange.from || dateRange.to) ? 'var(--green)' : undefined, borderColor: (dateRange.from || dateRange.to) ? 'var(--green)' : undefined }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            {dateRange.from ? `${dateRange.from}${dateRange.to ? ` → ${dateRange.to}` : ''}` : 'Date Range'}
-          </button>
-          {showDate && <DatePanel dateRange={dateRange} setDateRange={setDateRange} onClose={() => setShowDate(false)}/>}
-        </div>
-
-        <span style={{ fontSize: 12, color: 'var(--text-3)', marginLeft: 4 }}>{processed.length} trade{processed.length !== 1 ? 's' : ''}</span>
-
-        {/* Export */}
-        <button onClick={exportCSV} className="btn-outline"
-          style={{ marginLeft: 'auto', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 9 }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
-          Export CSV
-        </button>
+        {/* Row 3: Date picker (inline, always fits) */}
+        {showDate && <DatePanel dateRange={dateRange} setDateRange={setDateRange} onClose={() => setShowDate(false)}/>}
       </div>
 
-      {/* Table */}
+      {/* Table / Cards */}
       {processed.length === 0 ? (
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '64px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 14 }}>
           {trades.length === 0 ? 'No trades logged yet.' : 'No trades match your filters.'}
         </div>
+      ) : isMobile ? (
+        /* ── Mobile card list ── */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {processed.map((t) => {
+            const live     = livePrices[t.id]
+            const dispPnl  = live != null ? live.pnl : t.pnl
+            const pnlColor = dispPnl > 0 ? 'var(--green)' : dispPnl < 0 ? 'var(--red)' : 'var(--text-2)'
+            return (
+              <div key={t.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {/* Row 1: date + status */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'JetBrains Mono, monospace' }}>{t.date}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {t.mock && <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: 'rgba(217,119,6,0.1)', color: '#d97706', border: '1px solid rgba(217,119,6,0.25)' }}>MOCK</span>}
+                    {statusPill(t.outcome)}
+                  </div>
+                </div>
+                {/* Row 2: instrument + direction */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.01em' }}>{t.instrument}</span>
+                  {typePill(t.direction)}
+                </div>
+                {/* Row 3: prices */}
+                <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+                  {[['Entry', t.entryPrice?.toFixed(2)], ['Exit', t.exitPrice?.toFixed(2) ?? (live ? '—' : '—')], ['R', t.rMult != null ? `${t.rMult > 0 ? '+' : ''}${t.rMult}R` : null]].map(([lbl, val]) =>
+                    val != null && (
+                      <div key={lbl}>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>{lbl}</div>
+                        <div style={{ fontSize: 14, fontFamily: 'JetBrains Mono, monospace', fontWeight: 600, color: lbl === 'R' ? (parseFloat(val) > 0 ? 'var(--green)' : parseFloat(val) < 0 ? 'var(--red)' : 'var(--text-2)') : 'var(--text)' }}>{val}</div>
+                      </div>
+                    )
+                  )}
+                </div>
+                {/* Row 4: P&L + actions */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+                    {live && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: 'rgba(59,130,246,0.15)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.3)' }}>LIVE</span>}
+                    <span style={{ fontSize: 22, fontWeight: 800, color: pnlColor, fontFamily: 'JetBrains Mono, monospace' }}>{dispPnl != null ? `${dispPnl >= 0 ? '+' : ''}₹${Math.abs(dispPnl).toFixed(0)}` : '—'}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <button style={{ background: 'none', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text-2)', padding: '5px 12px', fontSize: 12, borderRadius: 7, fontFamily: 'Inter, sans-serif', fontWeight: 500 }} onClick={() => setEditTrade(t)}>Edit</button>
+                    {toDelete === t.id ? (
+                      <span style={{ display: 'flex', gap: 4 }}>
+                        <button style={{ fontSize: 11, padding: '5px 11px', borderRadius: 7, background: 'var(--red)', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'Inter, sans-serif' }} onClick={() => { onDelete(t.id); setToDelete(null) }}>Delete</button>
+                        <button style={{ fontSize: 11, padding: '5px 9px', borderRadius: 7, background: 'var(--surface-2)', color: 'var(--text-2)', border: '1px solid var(--border)', cursor: 'pointer' }} onClick={() => setToDelete(null)}>✕</button>
+                      </span>
+                    ) : (
+                      <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: 'var(--text-3)', lineHeight: 1, padding: '0 4px' }} onClick={() => setToDelete(t.id)}>×</button>
+                    )}
+                  </div>
+                </div>
+                {/* Strategy + tags */}
+                {(sm[t.strategyId]?.name || t.tags?.length > 0) && (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {sm[t.strategyId]?.name && <span style={{ fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 6, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-3)' }}>{sm[t.strategyId].name}</span>}
+                    {(t.tags ?? []).map(tag => <span key={tag} style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 10, background: 'var(--surface-2)', color: 'var(--text-3)', border: '1px solid var(--border)' }}>#{tag}</span>)}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
       ) : (
+        /* ── Desktop table ── */
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 720 }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)' }}>
                 {COLS.map(col => (
@@ -553,7 +630,7 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
             </thead>
             <tbody>
               {processed.map((t, i) => {
-                const live      = livePrices[t.id]                // present only for open+real trades
+                const live      = livePrices[t.id]
                 const dispPnl   = live != null ? live.pnl   : t.pnl
                 const pnlPct    = live != null && t.entryPrice
                   ? ((live.ltp - t.entryPrice) / t.entryPrice * (t.direction === 'short' ? -1 : 1) * 100)
@@ -818,6 +895,7 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

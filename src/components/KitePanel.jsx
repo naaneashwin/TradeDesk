@@ -45,7 +45,7 @@ function MarginCard({ label, value }) {
   return (
     <div style={{
       background: 'var(--surface-2)', border: '1px solid var(--border)',
-      borderRadius: 8, padding: '10px 14px', minWidth: 120,
+      borderRadius: 8, padding: '10px 14px', minWidth: 120, flex: '1 1 120px',
     }}>
       <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
         {label}
@@ -62,11 +62,18 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
   const [holdingsOpen, setHoldingsOpen] = useState(false)
   const [mfOpen, setMfOpen] = useState(false)
   const [logPrefill, setLogPrefill] = useState(null)
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 1024)
   // loggedKeys: Set of snapshot_keys ("SYMBOL|EXCHANGE|QTY") persisted in DB
   // Auto-invalidates when qty changes (key won't match the new snapshot)
   const [loggedKeys, setLoggedKeys] = useState(new Set())
   // Stable ref so the reconciliation effect always sees current loggedKeys
   const loggedKeysRef = useRef(new Set())
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 1024)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   useEffect(() => {
     getLoggedSymbols()
@@ -139,25 +146,21 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--text-3)', display: 'inline-block' }} />
-          <span style={{ fontSize: 13, color: 'var(--text-2)' }}>Not connected</span>
+          <img src="https://zerodha.com/static/images/favicon.ico" alt="Zerodha" width={18} height={18} style={{ borderRadius: 4, flexShrink: 0 }} onError={e => { e.currentTarget.style.display = 'none' }}/>
+          <span style={{ fontSize: 13, color: 'var(--text-2)' }}>Kite — not connected</span>
           {error && <span style={{ fontSize: 12, color: 'var(--red)', marginLeft: 6 }}>{error}</span>}
         </div>
         <a
           href={loginUrl}
           style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
+            display: 'inline-flex', alignItems: 'center', gap: 8,
             padding: '7px 16px', background: '#387ed1', color: '#fff',
             borderRadius: 8, fontSize: 13, fontWeight: 600, textDecoration: 'none',
             fontFamily: 'Inter, sans-serif',
           }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
-            <polyline points="10 17 15 12 10 7"/>
-            <line x1="15" y1="12" x2="3" y2="12"/>
-          </svg>
-          Connect Kite
+          <img src="https://zerodha.com/static/images/favicon.ico" alt="" width={14} height={14} style={{ borderRadius: 2, filter: 'brightness(10)' }} onError={e => { e.currentTarget.style.display = 'none' }}/>
+          Login with Kite
         </a>
       </div>
     )
@@ -202,17 +205,17 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
   return (
     <div style={{
       background: 'var(--surface)', border: '1px solid var(--border)',
-      borderRadius: 12, overflow: 'hidden',
+      borderRadius: 12,
     }}>
       {/* Header */}
       <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
         padding: '10px 16px', borderBottom: expanded ? '1px solid var(--border)' : 'none',
         cursor: 'pointer',
       }} onClick={() => setExpanded(v => !v)}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--green)', display: 'inline-block' }} />
-          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Kite Connect</span>
+          <img src="https://zerodha.com/static/images/favicon.ico" alt="Zerodha" width={18} height={18} style={{ borderRadius: 4, flexShrink: 0, imageRendering: 'auto' }} onError={e => { e.currentTarget.style.display = 'none' }}/>
+          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Kite</span>
           {loading && <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Fetching…</span>}
           {!loading && portfolio && (
             <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
@@ -256,8 +259,62 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
               <div style={{ fontSize: 13, color: 'var(--text-3)', padding: '12px 0' }}>No positions today.</div>
             )}
             {positions.length > 0 && (
+              isMobile ? (
+                /* ── Positions cards (mobile) ── */
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {positions.map((p, i) => {
+                    const t1 = p.t1_quantity ?? 0
+                    const effectiveQty = p.quantity !== 0 ? p.quantity : t1
+                    const isLogged_ = isLogged(p.tradingsymbol, p.exchange, Math.abs(effectiveQty), p.average_price)
+                    const dimmed = p.quantity === 0 && t1 === 0
+                    return (
+                      <div key={`${p.tradingsymbol}-${i}`} style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10, opacity: dimmed ? 0.4 : 1 }}>
+                        {/* Row 1: symbol + P&L */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', fontFamily: 'JetBrains Mono, monospace' }}>{p.tradingsymbol}</span>
+                            <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-3)' }}>{p.exchange}</span>
+                            <span style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 600 }}>{p.product}</span>
+                          </div>
+                          <PnlText value={p.pnl} />
+                        </div>
+                        {/* Stats grid: 2 columns */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 16px' }}>
+                          {[
+                            ['Qty',     effectiveQty > 0 ? `+${effectiveQty}` : `${effectiveQty}`,  effectiveQty > 0 ? 'var(--green)' : effectiveQty < 0 ? 'var(--red)' : 'var(--text-3)'],
+                            ['T+1',     t1 !== 0 ? `+${t1}` : '—',  t1 !== 0 ? '#d97706' : 'var(--text-3)'],
+                            ['Avg',     `₹${fmt(p.average_price)}`,  'var(--text-2)'],
+                            ['LTP',     `₹${fmt(p.last_price)}`,     'var(--text)'],
+                          ].map(([lbl, val, color]) => (
+                            <div key={lbl}>
+                              <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>{lbl}</div>
+                              <div style={{ fontSize: 13, fontWeight: 600, color, fontFamily: 'JetBrains Mono, monospace' }}>{val}</div>
+                            </div>
+                          ))}
+                        </div>
+                        {/* Log button */}
+                        {onLogTrade && (
+                          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                            {isLogged_
+                              ? <button onClick={() => toggleManualLog(p.tradingsymbol, p.exchange, Math.abs(effectiveQty), p.average_price)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: 'none', background: 'none', color: 'var(--green)', cursor: 'pointer', fontWeight: 600 }}>✓ Logged</button>
+                              : <button onClick={() => setLogPrefill({ instrument: p.tradingsymbol, entryPrice: String(p.average_price ?? ''), qty: String(Math.abs(effectiveQty)), direction: effectiveQty >= 0 ? 'long' : 'short', exchange: p.exchange ?? 'NSE', tradeType: p.product === 'MIS' ? 'eq_intraday' : p.product === 'NRML' ? 'fo_nrml' : 'eq_delivery', date: TODAY, notes: marginNotes(portfolio?.margins?.equity) })} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: 'none', background: 'var(--green)', color: '#fff', cursor: 'pointer', fontWeight: 700 }}>+ Log</button>
+                            }
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                  {positions.length > 1 && (
+                    <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)' }}>Total Day P&L</span>
+                      <PnlText value={dayPnl} />
+                    </div>
+                  )}
+                </div>
+              ) : (
+              /* ── Positions table (desktop) ── */
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 520 }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid var(--border)' }}>
                       {['Symbol', 'Product', 'Qty', 'T1', 'Avg Price', 'LTP', 'P&L', ''].map(h => (
@@ -323,6 +380,7 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
                   )}
                 </table>
               </div>
+              )
             )}
           </div>
 
@@ -345,8 +403,74 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
                   <div style={{ fontSize: 13, color: 'var(--text-3)', padding: '8px 0' }}>No long-term holdings.</div>
                 )}
             {holdings.length > 0 && (
+              isMobile ? (
+                /* ── Holdings cards (mobile) ── */
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {holdings.map((h, i) => {
+                    const invested   = (h.average_price ?? 0) * (h.quantity ?? 0)
+                    const currentVal = (h.last_price ?? 0) * (h.quantity ?? 0)
+                    const pnl        = h.pnl ?? (currentVal - invested)
+                    const returnPct  = invested > 0 ? (pnl / invested) * 100 : null
+                    const logged     = isLogged(h.tradingsymbol, h.exchange, h.quantity, h.average_price)
+                    return (
+                      <div key={`${h.tradingsymbol}-${i}`} style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {/* Row 1: symbol + return */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', fontFamily: 'JetBrains Mono, monospace' }}>{h.tradingsymbol}</span>
+                            <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-3)' }}>{h.exchange}</span>
+                          </div>
+                          {returnPct != null && (
+                            <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: returnPct >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                              {returnPct >= 0 ? '+' : ''}{returnPct.toFixed(2)}%
+                            </span>
+                          )}
+                        </div>
+                        {/* Stats grid: 2 columns */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 16px' }}>
+                          {[
+                            ['Qty',      h.quantity,              'var(--text)'],
+                            ['Avg Cost', `₹${fmt(h.average_price)}`, 'var(--text-2)'],
+                            ['LTP',      `₹${fmt(h.last_price)}`,    'var(--text)'],
+                            ['Invested', `₹${fmt(invested)}`,        'var(--text-2)'],
+                            ['Value',    `₹${fmt(currentVal)}`,      'var(--text-2)'],
+                            ['P&L',      pnl == null ? '—' : `${pnl >= 0 ? '+' : '−'}₹${fmt(Math.abs(pnl))}`, pnl > 0 ? 'var(--green)' : pnl < 0 ? 'var(--red)' : 'var(--text-2)'],
+                          ].map(([lbl, val, color]) => (
+                            <div key={lbl}>
+                              <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>{lbl}</div>
+                              <div style={{ fontSize: 13, fontWeight: lbl === 'P&L' ? 700 : 600, color, fontFamily: 'JetBrains Mono, monospace' }}>{val}</div>
+                            </div>
+                          ))}
+                        </div>
+                        {/* Log button */}
+                        {onLogTrade && (
+                          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                            {logged
+                              ? <button onClick={() => toggleManualLog(h.tradingsymbol, h.exchange, h.quantity, h.average_price)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(45,122,95,0.3)', background: 'none', color: 'var(--green)', cursor: 'pointer', fontFamily: 'Inter, sans-serif', fontWeight: 600 }}>✓ Logged</button>
+                              : <div style={{ display: 'flex', gap: 6 }}>
+                                  <button onClick={() => setLogPrefill({ instrument: h.tradingsymbol, entryPrice: String(h.average_price ?? ''), qty: String(h.quantity ?? ''), direction: 'long', exchange: h.exchange ?? 'NSE', tradeType: 'eq_delivery', date: TODAY, notes: marginNotes(portfolio?.margins?.equity) })} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: 'none', background: 'var(--green)', color: '#fff', cursor: 'pointer', fontWeight: 700 }}>+ Log</button>
+                                  <button onClick={() => toggleManualLog(h.tradingsymbol, h.exchange, h.quantity, h.average_price)} style={{ fontSize: 11, padding: '5px 9px', borderRadius: 6, border: '1px solid var(--border)', background: 'none', color: 'var(--text-3)', cursor: 'pointer' }}>✓</button>
+                                </div>
+                            }
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                  {holdings.length > 1 && (
+                    <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)' }}>Total Holdings P&L</span>
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                        <PnlText value={holdingsPnl} />
+                        {holdingsTotalPct != null && <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: holdingsTotalPct >= 0 ? 'var(--green)' : 'var(--red)' }}>{holdingsTotalPct >= 0 ? '+' : ''}{holdingsTotalPct.toFixed(2)}%</span>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+              /* ── Holdings table (desktop) ── */
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 580 }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid var(--border)' }}>
                       {['Symbol', 'Qty', 'Avg Cost', 'LTP', 'Current Value', 'P&L', 'Return', ''].map(h => (
@@ -424,6 +548,7 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
                   )}
                 </table>
               </div>
+              )
             )}
               </div>
             )}
@@ -448,8 +573,66 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
                   <div style={{ fontSize: 13, color: 'var(--text-3)', padding: '8px 0' }}>No mutual fund holdings.</div>
                 )}
             {mfHoldings.length > 0 && (
+              isMobile ? (
+                /* ── MF cards (mobile) ── */
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {mfHoldings.map((h, i) => {
+                    const units      = h.quantity ?? h.units ?? 0
+                    const invested   = (h.average_price ?? 0) * units
+                    const currentVal = (h.last_price ?? 0) * units
+                    const pnl        = currentVal - invested
+                    const returnPct  = invested > 0 ? (pnl / invested) * 100 : null
+                    const avgNav     = h.average_price ?? (units > 0 ? invested / units : null)
+                    const curNav     = h.last_price ?? (units > 0 ? currentVal / units : null)
+                    return (
+                      <div key={`${h.tradingsymbol ?? h.folio}-${i}`} style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {/* Row 1: Fund name + return% */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {h.fund ?? h.tradingsymbol ?? h.folio}
+                            </div>
+                            {h.folio && <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>{h.folio}</div>}
+                          </div>
+                          {returnPct != null && (
+                            <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: returnPct >= 0 ? 'var(--green)' : 'var(--red)', flexShrink: 0 }}>
+                              {returnPct >= 0 ? '+' : ''}{returnPct.toFixed(2)}%
+                            </span>
+                          )}
+                        </div>
+                        {/* Stats grid: 2 columns */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 16px' }}>
+                          {[
+                            ['Units',    units,                              'var(--text)'],
+                            ['Avg NAV',  avgNav != null ? `₹${fmt(avgNav)}` : '—', 'var(--text-2)'],
+                            ['Cur NAV',  curNav != null ? `₹${fmt(curNav)}` : '—', 'var(--text)'],
+                            ['Invested', `₹${fmt(invested)}`,                'var(--text-2)'],
+                            ['Value',    `₹${fmt(currentVal)}`,              'var(--text-2)'],
+                            ['P&L',      pnl === 0 ? '—' : `${pnl >= 0 ? '+' : '−'}₹${fmt(Math.abs(pnl))}`, pnl > 0 ? 'var(--green)' : pnl < 0 ? 'var(--red)' : 'var(--text-2)'],
+                          ].map(([lbl, val, color]) => (
+                            <div key={lbl}>
+                              <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>{lbl}</div>
+                              <div style={{ fontSize: 13, fontWeight: lbl === 'P&L' ? 700 : 600, color, fontFamily: 'JetBrains Mono, monospace' }}>{val}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {mfHoldings.length > 1 && (
+                    <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)' }}>Total MF P&L</span>
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                        <PnlText value={mfPnl} />
+                        {mfTotalPct != null && <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: mfTotalPct >= 0 ? 'var(--green)' : 'var(--red)' }}>{mfTotalPct >= 0 ? '+' : ''}{mfTotalPct.toFixed(2)}%</span>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+              /* ── MF table (desktop) ── */
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 660 }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid var(--border)' }}>
                       {['Fund', 'Units', 'Avg NAV', 'Current NAV', 'Invested', 'Current Value', 'P&L', 'Return'].map(h => (
@@ -498,6 +681,7 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
                   )}
                 </table>
               </div>
+              )
             )}
               </div>
             )}

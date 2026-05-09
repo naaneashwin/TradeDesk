@@ -398,14 +398,15 @@ export default function ChecklistLibrary({ items = [], strats = [], onUpsert, on
                 background: "var(--surface)",
                 border: "1px solid var(--border)",
                 borderRadius: 12,
-                padding: "16px 20px",
+                padding: "14px 16px",
                 display: "flex",
                 alignItems: "flex-start",
-                gap: 14,
+                gap: 12,
+                flexWrap: "wrap",
                 borderLeft: `3px solid ${itemColor}`,
               }}
             >
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: "1 1 200px", minWidth: 0 }}>
                 <p
                   style={{
                     fontSize: 14,
@@ -457,7 +458,7 @@ export default function ChecklistLibrary({ items = [], strats = [], onUpsert, on
                   </span>
                 )}
               </div>
-              <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "flex-start" }}>
+              <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
                 <UsedByBadge stratNames={usedByMap[item.id] ?? []} />
                 <button
                   onClick={() => setModal(item)}

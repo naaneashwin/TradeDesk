@@ -375,7 +375,7 @@ function ChecklistRoute({ strats, trades, checklistItems, onLogTrade }) {
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [session, setSession] = useState(undefined); // undefined = loading, null = logged out
+  const [session, setSession] = useState(undefined);
   const [strats, setStrats] = useState([]);
   const [trades, setTrades] = useState([]);
   const [watchlistItems, setWatchlistItems] = useState([]);
@@ -391,8 +391,17 @@ export default function App() {
   });
   const [importError, setImportError] = useState(null);
   const impRef = useRef(null);
-  const loadedUserRef = useRef(null); // tracks which userId we've already loaded data for
+  const loadedUserRef = useRef(null);
+  const bnav = useRef(null);
   const kite = useKite();
+
+  // ── Responsive breakpoint ──────────────────────────────────
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 1024);
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 1024);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const tab = location.pathname.split("/")[2] ?? "strategies";
 
@@ -699,6 +708,13 @@ export default function App() {
 
   const sideW = collapsed ? 64 : 240;
 
+  // Scroll active bottom-nav item into view on mobile
+  useEffect(() => {
+    if (!isMobile || !bnav.current) return;
+    const active = bnav.current.querySelector('.bnav-btn[data-active="true"]');
+    if (active) active.scrollIntoView({ inline: 'center', behavior: 'smooth', block: 'nearest' });
+  }, [location.pathname, isMobile]);
+
   // ── Auth guards ─────────────────────────────────────────────
   // session === undefined means Supabase hasn't resolved yet
   if (session === undefined)
@@ -747,7 +763,8 @@ export default function App() {
     <div
       style={{ minHeight: "100vh", background: "var(--bg)", display: "flex" }}
     >
-      {/* ── Sidebar ── */}
+      {/* ── Sidebar (desktop only) ── */}
+      {!isMobile && (
       <aside
         style={{
           width: sideW,
@@ -992,64 +1009,71 @@ export default function App() {
           </button>
         </div>
       </aside>
+      )}
 
-      {/* ── Main ── */}
+      {/* ── Main area ── */}
       <div
         style={{
-          marginLeft: sideW,
+          marginLeft: isMobile ? 0 : sideW,
           flex: 1,
           display: "flex",
           flexDirection: "column",
           minHeight: "100vh",
           transition: "margin-left 0.22s cubic-bezier(0.4,0,0.2,1)",
+          minWidth: 0,
         }}
       >
         {/* Top bar */}
         <header
           style={{
-            height: 64,
+            height: 56,
             background: "var(--surface)",
             borderBottom: "1px solid var(--border)",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            padding: "0 28px",
+            padding: isMobile ? "0 16px" : "0 28px",
             position: "fixed",
             top: 0,
-            left: sideW,
+            left: isMobile ? 0 : sideW,
             right: 0,
             zIndex: 30,
             transition: "left 0.22s cubic-bezier(0.4,0,0.2,1)",
+            gap: 8,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <button
-              onClick={() => setCollapsed((v) => !v)}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                color: "var(--text-2)",
-                padding: 4,
-                display: "flex",
-                alignItems: "center",
-              }}
-            >
-              <Icon name="menu" size={18} color="var(--text-2)" />
-            </button>
+          <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 14, minWidth: 0 }}>
+            {/* Logo on mobile */}
+            {isMobile && (
+              <div style={{ width: 30, height: 30, borderRadius: 8, background: "var(--green)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Icon name="logo" size={16} />
+              </div>
+            )}
+            {/* Hamburger on desktop */}
+            {!isMobile && (
+              <button
+                onClick={() => setCollapsed((v) => !v)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-2)", padding: 4, display: "flex", alignItems: "center" }}
+              >
+                <Icon name="menu" size={18} color="var(--text-2)" />
+              </button>
+            )}
             <h1
               style={{
-                fontSize: 22,
+                fontSize: isMobile ? 16 : 20,
                 fontWeight: 700,
                 color: "var(--text)",
                 margin: 0,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
               }}
             >
               {PAGE_TITLES[tab] ?? "Strategy"}
             </h1>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 6 : 8, flexShrink: 0 }}>
             {syncStatus !== "idle" && (
               <span
                 style={{
@@ -1060,12 +1084,11 @@ export default function App() {
                       : syncStatus === "error"
                         ? "var(--red)"
                         : "var(--text-3)",
+                  whiteSpace: "nowrap",
                 }}
               >
                 {
-                  { saving: "Saving…", saved: "Saved ✓", error: "Error" }[
-                    syncStatus
-                  ]
+                  { saving: "Saving…", saved: "✓", error: "Error" }[syncStatus]
                 }
               </span>
             )}
@@ -1077,101 +1100,48 @@ export default function App() {
                 border: "1px solid var(--border-2)",
                 borderRadius: 8,
                 cursor: "pointer",
-                padding: "7px 10px",
+                padding: "6px 8px",
                 display: "flex",
                 alignItems: "center",
                 color: "var(--text-2)",
               }}
-              title={dark ? "Switch to light mode" : "Switch to dark mode"}
+              title={dark ? "Light mode" : "Dark mode"}
             >
-              <Icon
-                name={dark ? "sun" : "moon"}
-                size={15}
-                color="var(--text-2)"
-              />
+              <Icon name={dark ? "sun" : "moon"} size={15} color="var(--text-2)" />
             </button>
 
-            <button
-              className="btn-outline"
-              style={{
-                padding: "8px 14px",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-              onClick={exportData}
-            >
-              <Icon name="download" size={14} /> Export
-            </button>
-            <button
-              className="btn-outline"
-              style={{
-                padding: "8px 14px",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-              onClick={() => {
-                setImportError(null);
-                impRef.current.click();
-              }}
-            >
-              <Icon name="upload" size={14} /> Import
-            </button>
-            <input
-              ref={impRef}
-              type="file"
-              accept=".csv"
-              style={{ display: "none" }}
-              onChange={importData}
-            />
+            {/* Export/Import hidden on mobile (use menu) */}
+            {!isMobile && (
+              <>
+                <button className="btn-outline" style={{ padding: "7px 12px", display: "flex", alignItems: "center", gap: 6 }} onClick={exportData}>
+                  <Icon name="download" size={14} /> Export
+                </button>
+                <button className="btn-outline" style={{ padding: "7px 12px", display: "flex", alignItems: "center", gap: 6 }} onClick={() => { setImportError(null); impRef.current.click(); }}>
+                  <Icon name="upload" size={14} /> Import
+                </button>
+              </>
+            )}
+            <input ref={impRef} type="file" accept=".csv" style={{ display: "none" }} onChange={importData} />
 
             {tab === "strategies" && (
-              <button
-                className="btn-green"
-                style={{
-                  padding: "8px 16px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-                onClick={() =>
-                  document.dispatchEvent(new CustomEvent("td:new-strategy"))
-                }
-              >
-                <Icon name="plus" size={14} color="white" /> New Strategy
+              <button className="btn-green" style={{ padding: isMobile ? "7px 10px" : "7px 14px", display: "flex", alignItems: "center", gap: 5 }}
+                onClick={() => document.dispatchEvent(new CustomEvent("td:new-strategy"))}>
+                <Icon name="plus" size={14} color="white" />
+                {!isMobile && "New Strategy"}
               </button>
             )}
             {(tab === "journal" || tab === "stats") && (
-              <button
-                className="btn-green"
-                style={{
-                  padding: "8px 16px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-                onClick={() =>
-                  document.dispatchEvent(new CustomEvent("td:journal-log"))
-                }
-              >
-                <Icon name="plus" size={14} color="white" /> Log Trade
+              <button className="btn-green" style={{ padding: isMobile ? "7px 10px" : "7px 14px", display: "flex", alignItems: "center", gap: 5 }}
+                onClick={() => document.dispatchEvent(new CustomEvent("td:journal-log"))}>
+                <Icon name="plus" size={14} color="white" />
+                {!isMobile && "Log Trade"}
               </button>
             )}
             {tab === "watchlist" && (
-              <button
-                className="btn-green"
-                style={{
-                  padding: "8px 16px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-                onClick={() =>
-                  document.dispatchEvent(new CustomEvent("td:new-watchlist"))
-                }
-              >
-                <Icon name="plus" size={14} color="white" /> Add to Watchlist
+              <button className="btn-green" style={{ padding: isMobile ? "7px 10px" : "7px 14px", display: "flex", alignItems: "center", gap: 5 }}
+                onClick={() => document.dispatchEvent(new CustomEvent("td:new-watchlist"))}>
+                <Icon name="plus" size={14} color="white" />
+                {!isMobile && "Add"}
               </button>
             )}
           </div>
@@ -1184,7 +1154,7 @@ export default function App() {
               background: "#fef2f2",
               border: "1px solid #fecaca",
               borderRadius: 8,
-              margin: "16px 32px 0",
+              margin: isMobile ? "12px 16px 0" : "16px 32px 0",
               padding: "12px 16px",
               display: "flex",
               justifyContent: "space-between",
@@ -1192,36 +1162,20 @@ export default function App() {
               gap: 12,
             }}
           >
-            <pre
-              style={{
-                fontSize: 12,
-                color: "var(--red)",
-                margin: 0,
-                whiteSpace: "pre-wrap",
-                fontFamily: "Inter, sans-serif",
-              }}
-            >
+            <pre style={{ fontSize: 12, color: "var(--red)", margin: 0, whiteSpace: "pre-wrap", fontFamily: "Inter, sans-serif" }}>
               {importError}
             </pre>
-            <button
-              onClick={() => setImportError(null)}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                color: "var(--red)",
-                fontSize: 18,
-                lineHeight: 1,
-                flexShrink: 0,
-              }}
-            >
-              ×
-            </button>
+            <button onClick={() => setImportError(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--red)", fontSize: 18, lineHeight: 1, flexShrink: 0 }}>×</button>
           </div>
         )}
 
         {/* Content */}
-        <main style={{ flex: 1, padding: "28px 32px", paddingTop: 92 }}>
+        <main style={{
+          flex: 1,
+          padding: isMobile ? "16px 16px" : "28px 32px",
+          paddingTop: isMobile ? 72 : 84,
+          paddingBottom: isMobile ? 80 : 28,
+        }}>
           <Routes>
             <Route
               path="/tradedesk/strategies"
@@ -1310,6 +1264,53 @@ export default function App() {
             />
           </Routes>
         </main>
+
+        {/* ── Bottom nav (mobile only) ── */}
+        {isMobile && (
+          <nav ref={bnav} style={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: 64,
+            background: 'var(--surface)',
+            borderTop: '1px solid var(--border)',
+            display: 'flex',
+            zIndex: 40,
+            overflowX: 'auto',
+            scrollbarWidth: 'none',
+          }}>
+            {NAV_ITEMS.map(({ id, label, path }) => {
+              const isActive = location.pathname === path || location.pathname.startsWith(path + '/');
+              return (
+                <button key={id} className="bnav-btn"
+                  data-active={isActive ? "true" : "false"}
+                  onClick={() => navigate(path)}
+                  style={{
+                    flex: '0 0 auto',
+                    minWidth: 64,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 3,
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: 'none',
+                    padding: '8px 10px',
+                    position: 'relative',
+                    fontFamily: 'Inter, sans-serif',
+                    transition: 'background 0.15s',
+                  }}>
+                  <Icon name={navIconName[id]} size={20} color={isActive ? "var(--green)" : "var(--text-3)"} />
+                  <span style={{ fontSize: 9, fontWeight: isActive ? 700 : 500, color: isActive ? 'var(--green)' : 'var(--text-3)', whiteSpace: 'nowrap', letterSpacing: '0.02em' }}>
+                    {label}
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
+        )}
       </div>
     </div>
   );

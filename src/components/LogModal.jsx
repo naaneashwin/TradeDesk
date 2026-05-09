@@ -328,7 +328,7 @@ export default function LogModal({ strategy: initialStrategy, strats, onSave, on
 
       {/* ── Entry ─────────────────────────────────────────── */}
       <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Entry</p>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 160px), 1fr))', gap: 14, marginBottom: 20 }}>
         <Field label="Date">
           <input type="date" className="t-inp" value={form.date} onChange={e => fEntry('date', e.target.value)}/>
         </Field>
@@ -486,7 +486,7 @@ export default function LogModal({ strategy: initialStrategy, strats, onSave, on
       <Field label="Thesis / Reason to Trade">
         <textarea className="t-inp" style={{ height: 60, resize: 'vertical', marginBottom: 14 }} value={form.planThesis} onChange={e => fEntry('planThesis', e.target.value)} placeholder="Why are you entering this trade?"/>
       </Field>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 160px), 1fr))', gap: 14, marginBottom: 20 }}>
         <Field label="Target Price (₹)">
           <input type="number" className="t-inp font-mono" value={form.planTarget} onChange={e => fEntry('planTarget', e.target.value)} placeholder="0.00"/>
         </Field>
@@ -499,7 +499,7 @@ export default function LogModal({ strategy: initialStrategy, strats, onSave, on
       <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Trade Details</p>
 
       {/* Trade type + Exchange */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 14, marginBottom: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: 14, marginBottom: 14 }}>
         <Field label="Trade Type">
           <select className="t-inp" value={form.tradeType} onChange={e => fEntry('tradeType', e.target.value)}>
             {Object.entries(TRADE_TYPE_LABELS).map(([id, label]) => (
@@ -552,7 +552,7 @@ export default function LogModal({ strategy: initialStrategy, strats, onSave, on
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 160px), 1fr))', gap: 14, marginBottom: 20 }}>
         <Field label={`Commission / Brokerage (₹)${form.commissionAuto ? ' — auto' : ' — manual'}`}>
           <div style={{ position: 'relative' }}>
             <input type="number" className="t-inp font-mono"

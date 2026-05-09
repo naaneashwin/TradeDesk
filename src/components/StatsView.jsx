@@ -19,7 +19,7 @@ function MockToggle({ value, onChange }) {
 
 function SummaryCard({ label, value, accent }) {
   return (
-    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '22px 24px', flex: 1 }}>
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '22px 24px', flex: '1 1 min(100%, 180px)', minWidth: 0 }}>
       <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 10 }}>{label}</p>
       <p style={{ fontSize: 26, fontWeight: 700, color: accent ?? 'var(--text)', margin: 0, fontFamily: 'JetBrains Mono, monospace' }}>{value}</p>
     </div>
@@ -203,7 +203,8 @@ function StrategyPerformance({ trades, strats }) {
   if (!data.length) return <p style={{ color: 'var(--text-3)', fontSize: 13 }}>No data.</p>
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+    <div style={{ overflowX: 'auto' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 440 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 60px 60px 80px 80px', gap: 8, padding: '6px 10px', fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
         <span>Strategy</span><span style={{ textAlign: 'center' }}>Trades</span><span style={{ textAlign: 'center' }}>Win%</span><span style={{ textAlign: 'center' }}>Avg R</span><span style={{ textAlign: 'right' }}>PnL</span><span/>
       </div>
@@ -219,6 +220,7 @@ function StrategyPerformance({ trades, strats }) {
           </div>
         </div>
       ))}
+    </div>
     </div>
   )
 }
@@ -378,11 +380,13 @@ function VariantPerformance({ trades, strats }) {
       {data.map(d => {
         const wr = d.count ? Math.round(d.wins / d.count * 100) : 0
         return (
-          <div key={d.label} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: 'var(--surface-2)', borderRadius: 8 }}>
-            <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{d.label}</span>
+          <div key={d.label} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--surface-2)', borderRadius: 8, flexWrap: 'wrap' }}>
+            <span style={{ flex: '1 1 120px', fontSize: 13, fontWeight: 600, color: 'var(--text)', minWidth: 0 }}>{d.label}</span>
+            <div style={{ display: 'flex', gap: 12, flexShrink: 0, alignItems: 'center' }}>
             <span style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'JetBrains Mono, monospace' }}>{d.count} trades</span>
             <span style={{ fontSize: 12, fontWeight: 700, color: wr >= 50 ? 'var(--green)' : 'var(--red)', fontFamily: 'JetBrains Mono, monospace', minWidth: 36, textAlign: 'right' }}>{wr}%</span>
             <span style={{ fontSize: 13, fontWeight: 700, color: d.pnl >= 0 ? 'var(--green)' : 'var(--red)', fontFamily: 'JetBrains Mono, monospace', minWidth: 72, textAlign: 'right' }}>{d.pnl >= 0 ? '+' : ''}₹{fmt(d.pnl)}</span>
+            </div>
           </div>
         )
       })}
@@ -545,7 +549,7 @@ export default function StatsView({ trades, strats, totalInvestment, onSaveTotal
       </div>
 
       {/* Equity curve + Donut */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: 16 }}>
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24 }}>
           <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', margin: '0 0 20px' }}>Equity Curve <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-3)', marginLeft: 6 }}>— red shading = drawdown</span></h3>
           <EquityCurve trades={filteredTrades}/>
@@ -577,7 +581,7 @@ export default function StatsView({ trades, strats, totalInvestment, onSaveTotal
       </div>
 
       {/* PnL by Strategy + Advanced Metrics */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: 16 }}>
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24 }}>
           <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', margin: '0 0 20px' }}>P&amp;L by Strategy</h3>
           <PnlByStrategy trades={filteredTrades} strats={strats}/>

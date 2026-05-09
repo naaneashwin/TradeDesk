@@ -176,7 +176,7 @@ function BacktestingTab({ trades, strategyId }) {
       {result && !result.empty && (
         <>
           {/* Stat row */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 140px), 1fr))', gap: 10 }}>
             {[
               { label: 'TOTAL PNL',     value: `${result.totalPnl >= 0 ? '+' : ''}₹${result.totalPnl.toLocaleString()}`, col: result.totalPnl >= 0 ? 'var(--green)' : 'var(--red)' },
               { label: 'WIN RATE',      value: `${result.winRate}%`,   col: 'var(--text)' },
@@ -599,20 +599,20 @@ export default function Checklist({ strategy, trades = [], checklistItems = [], 
       </button>
 
       {/* Header card */}
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: '24px 28px', marginBottom: 20 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div style={{ flex: 1 }}>
-            <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text)', margin: '0 0 6px' }}>{strategy.name}</h1>
-            {subtitle && <p style={{ fontSize: 13, color: 'var(--text-2)', margin: 0 }}>{subtitle}</p>}
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: '20px 24px', marginBottom: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', rowGap: 12 }}>
+          <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+            <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)', margin: '0 0 4px' }}>{strategy.name}</h1>
+            {subtitle && <p style={{ fontSize: 13, color: 'var(--text-2)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subtitle}</p>}
           </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <button className="btn-outline" style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6 }} onClick={toggleAll}>
-              {allExpanded ? 'Collapse All' : 'Expand All'}
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points={allExpanded ? '18 15 12 9 6 15' : '6 9 12 15 18 9'}/></svg>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="btn-green" style={{ padding: '8px 18px' }} onClick={() => setLogModal(true)}>Log Trade</button>
+            <button className="btn-outline" style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 5 }} onClick={toggleAll}>
+              {allExpanded ? 'Collapse' : 'Expand'}
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points={allExpanded ? '18 15 12 9 6 15' : '6 9 12 15 18 9'}/></svg>
             </button>
-            <button className="btn-outline" style={{ padding: '8px 16px' }} onClick={reset}>Reset</button>
-            <button className="btn-green" style={{ padding: '8px 20px' }} onClick={() => setLogModal(true)}>Log Trade</button>
-            <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', fontSize: 22, lineHeight: 1, padding: '0 4px' }}>×</button>
+            <button className="btn-outline" style={{ padding: '8px 14px' }} onClick={reset}>Reset</button>
+            <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', fontSize: 22, lineHeight: 1, padding: '4px' }}>×</button>
           </div>
         </div>
       </div>
@@ -622,7 +622,7 @@ export default function Checklist({ strategy, trades = [], checklistItems = [], 
         <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', margin: 0 }}>All-time statistics</p>
         <p style={{ fontSize: 11, color: 'var(--text-3)', margin: 0 }}>Across all logged trades · use Backtesting tab for date-filtered analysis</p>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 160px), 1fr))', gap: 12, marginBottom: 20 }}>
         <ChecklistStatCard iconKey="variants" label="Variants" value={strategy.variants?.length ?? 0}/>
         <ChecklistStatCard iconKey="trades"   label="Trades"   value={trades_count}/>
         <ChecklistStatCard iconKey="winrate"  label="Win Rate" value={wr_display}/>
@@ -632,7 +632,7 @@ export default function Checklist({ strategy, trades = [], checklistItems = [], 
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', marginBottom: 20 }}>
+      <div className="scroll-x" style={{ borderBottom: '1px solid var(--border)', marginBottom: 20 }}>
         {tabs.map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id)}
             style={{
