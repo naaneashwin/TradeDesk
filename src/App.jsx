@@ -40,7 +40,7 @@ import Watchlist from "./components/Watchlist";
 
 
 // ── BrokerConnect page ────────────────────────────────────────
-function BrokerConnect({ connected, portfolio, loading, error, loginUrl, disconnect, refresh, strats, trades, onLogTrade }) {
+function BrokerConnect({ connected, portfolio, loading, error, loginUrl, disconnect, refresh, strats, trades, onLogTrade, onEditTrade }) {
   const ALL_BROKERS = [
     {
       id: 'kite',
@@ -76,7 +76,7 @@ function BrokerConnect({ connected, portfolio, loading, error, loginUrl, disconn
                   <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: 'rgba(45,122,95,0.1)', color: 'var(--green)', border: '1px solid rgba(45,122,95,0.25)' }}>Connected</span>
                 </div>
                 {b.id === 'kite' && (
-                  <KitePanel connected={connected} portfolio={portfolio} loading={loading} error={error} loginUrl={loginUrl} disconnect={disconnect} refresh={refresh} strats={strats} trades={trades} onLogTrade={onLogTrade} />
+                  <KitePanel connected={connected} portfolio={portfolio} loading={loading} error={error} loginUrl={loginUrl} disconnect={disconnect} refresh={refresh} strats={strats} trades={trades} onLogTrade={onLogTrade} onEditTrade={onEditTrade} />
                 )}
               </div>
             ))}
@@ -1255,6 +1255,7 @@ export default function App() {
                   strats={strats}
                   trades={trades}
                   onLogTrade={handleInsertTrade}
+                  onEditTrade={handleUpdateTrade}
                 />
               }
             />

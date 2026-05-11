@@ -272,7 +272,7 @@ export default function LogModal({ strategy: initialStrategy, strats, onSave, on
     if (!form.instrument.trim()) return
 
     // Checklist gate: require >50% completion (or a second click to override)
-    if (!checklistWarn && score.total > 0 && score.done / score.total < 0.5) {
+    if (!checklistWarn && score?.total > 0 && score.done / score.total < 0.5) {
       setChecklistWarn(true)
       return
     }
@@ -309,7 +309,7 @@ export default function LogModal({ strategy: initialStrategy, strats, onSave, on
           </div>
         ) : (
           <p style={{ fontSize: 12, color: 'var(--text-2)', fontFamily: 'JetBrains Mono, monospace', margin: 0 }}>
-            {strategy?.name}{variant ? ` · ${variant.toUpperCase()}` : ''} · Checklist {score.done}/{score.total}
+            {strategy?.name}{variant ? ` · ${variant.toUpperCase()}` : ''}{score ? ` · Checklist ${score.done}/${score.total}` : ''}
           </p>
         )}
       </div>
@@ -319,7 +319,7 @@ export default function LogModal({ strategy: initialStrategy, strats, onSave, on
         <div style={{ marginBottom: 16, padding: '12px 16px', borderRadius: 8, background: 'rgba(217,119,6,0.1)', border: '1px solid rgba(217,119,6,0.35)', display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 18 }}>⚠️</span>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#d97706' }}>Checklist incomplete ({score.done}/{score.total} items)</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#d97706' }}>Checklist incomplete ({score?.done}/{score?.total} items)</div>
             <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>Less than 50% of checklist items are checked. Click Save again to log anyway.</div>
           </div>
           <button onClick={() => setChecklistWarn(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--text-3)', lineHeight: 1 }}>×</button>

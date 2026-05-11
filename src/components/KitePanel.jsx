@@ -57,11 +57,12 @@ function MarginCard({ label, value }) {
   )
 }
 
-export default function KitePanel({ connected, portfolio, loading, error, loginUrl, disconnect, refresh, onLogTrade, strats, trades }) {
+export default function KitePanel({ connected, portfolio, loading, error, loginUrl, disconnect, refresh, onLogTrade, onEditTrade, strats, trades }) {
   const [expanded, setExpanded] = useState(true)
   const [holdingsOpen, setHoldingsOpen] = useState(false)
   const [mfOpen, setMfOpen] = useState(false)
   const [logPrefill, setLogPrefill] = useState(null)
+  const [exitTrade, setExitTrade] = useState(null)
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 1024)
   // loggedKeys: Set of snapshot_keys ("SYMBOL|EXCHANGE|QTY") persisted in DB
   // Auto-invalidates when qty changes (key won't match the new snapshot)
@@ -123,6 +124,24 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
         return next
       })
     }
+  }
+
+  // ── Exit trade helpers ──────────────────────────────────────
+  const findOpenTrade = (symbol) => {
+    if (!trades?.length) return null
+    return trades.find(t => t.instrument === symbol && t.outcome === 'open')
+      ?? trades.find(t => t.instrument === symbol && !(t.exits?.length))
+      ?? null
+  }
+
+  const openExitModal = (symbol, ltp, currentQty) => {
+    const trade = findOpenTrade(symbol)
+    if (!trade) return
+    const alreadyExited = (trade.exits ?? []).reduce((s, e) => s + (Number(e.qty) || 0), 0)
+    const remainingQty = Math.max(0, (Number(trade.qty) || 0) - alreadyExited)
+    const exitQty = remainingQty > 0 ? remainingQty : (currentQty || '')
+    const newExit = { exitDate: TODAY, exitPrice: String(ltp ?? ''), qty: String(exitQty), exitStrategy: '' }
+    setExitTrade({ ...trade, exits: [...(trade.exits ?? []), newExit] })
   }
 
   // ── Not connected ─────────────────────────────────────────
@@ -292,9 +311,12 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
                             </div>
                           ))}
                         </div>
-                        {/* Log button */}
+                        {/* Log / Exit buttons */}
                         {onLogTrade && (
-                          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+                            {findOpenTrade(p.tradingsymbol) && (
+                              <button onClick={() => openExitModal(p.tradingsymbol, p.last_price, Math.abs(effectiveQty))} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(220,38,38,0.35)', background: 'none', color: 'var(--red)', cursor: 'pointer', fontWeight: 600 }}>Exit Trade</button>
+                            )}
                             {isLogged_
                               ? <button onClick={() => toggleManualLog(p.tradingsymbol, p.exchange, Math.abs(effectiveQty), p.average_price)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: 'none', background: 'none', color: 'var(--green)', cursor: 'pointer', fontWeight: 600 }}>✓ Logged</button>
                               : <button onClick={() => setLogPrefill({ instrument: p.tradingsymbol, entryPrice: String(p.average_price ?? ''), qty: String(Math.abs(effectiveQty)), direction: effectiveQty >= 0 ? 'long' : 'short', exchange: p.exchange ?? 'NSE', tradeType: p.product === 'MIS' ? 'eq_intraday' : p.product === 'NRML' ? 'fo_nrml' : 'eq_delivery', date: TODAY, notes: marginNotes(portfolio?.margins?.equity) })} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: 'none', background: 'var(--green)', color: '#fff', cursor: 'pointer', fontWeight: 700 }}>+ Log</button>
@@ -341,7 +363,14 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
                           <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-2)' }}>₹{fmt(p.average_price)}</td>
                           <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text)' }}>₹{fmt(p.last_price)}</td>
                           <td style={{ padding: '8px 10px', textAlign: 'right' }}><PnlText value={p.pnl} /></td>
-                          <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                          <td style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                            {onLogTrade && findOpenTrade(p.tradingsymbol) && (
+                              <button
+                                title="Log an exit for this trade"
+                                onClick={() => openExitModal(p.tradingsymbol, p.last_price, Math.abs(effectiveQty))}
+                                style={{ background: 'none', border: '1px solid rgba(220,38,38,0.35)', borderRadius: 5, cursor: 'pointer', color: 'var(--red)', fontSize: 10, padding: '2px 6px', fontFamily: 'Inter, sans-serif', fontWeight: 600 }}
+                              >Exit</button>
+                            )}
                             {onLogTrade && !isLogged(p.tradingsymbol, p.exchange, Math.abs(effectiveQty), p.average_price) && (
                               <button
                                 title="Log this trade"
@@ -442,9 +471,12 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
                             </div>
                           ))}
                         </div>
-                        {/* Log button */}
+                        {/* Log / Exit buttons */}
                         {onLogTrade && (
-                          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+                            {findOpenTrade(h.tradingsymbol) && (
+                              <button onClick={() => openExitModal(h.tradingsymbol, h.last_price, h.quantity)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(220,38,38,0.35)', background: 'none', color: 'var(--red)', cursor: 'pointer', fontFamily: 'Inter, sans-serif', fontWeight: 600 }}>Exit Trade</button>
+                            )}
                             {logged
                               ? <button onClick={() => toggleManualLog(h.tradingsymbol, h.exchange, h.quantity, h.average_price)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(45,122,95,0.3)', background: 'none', color: 'var(--green)', cursor: 'pointer', fontFamily: 'Inter, sans-serif', fontWeight: 600 }}>✓ Logged</button>
                               : <div style={{ display: 'flex', gap: 6 }}>
@@ -521,6 +553,13 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
                                   style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', color: 'var(--text-3)', fontSize: 10, padding: '2px 6px', marginLeft: 4, fontFamily: 'Inter, sans-serif' }}
                                 >✓</button>
                               </>
+                            )}
+                            {onLogTrade && findOpenTrade(h.tradingsymbol) && (
+                              <button
+                                title="Log an exit for this trade"
+                                onClick={() => openExitModal(h.tradingsymbol, h.last_price, h.quantity)}
+                                style={{ background: 'none', border: '1px solid rgba(220,38,38,0.35)', borderRadius: 6, cursor: 'pointer', color: 'var(--red)', fontSize: 11, padding: '2px 7px', fontFamily: 'Inter, sans-serif', fontWeight: 600 }}
+                              >Exit</button>
                             )}
                             {onLogTrade && isLogged(h.tradingsymbol, h.exchange, h.quantity, h.average_price) && (
                               <button
@@ -689,7 +728,7 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
         </div>
       )}
 
-      {/* Inline LogModal */}
+      {/* Inline LogModal — new trade */}
       {logPrefill && (
         <LogModal
           strats={strats ?? []}
@@ -698,6 +737,19 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
           onSave={async (trade) => {
             await onLogTrade?.(trade)
             setLogPrefill(null)
+          }}
+        />
+      )}
+
+      {/* Inline LogModal — exit existing trade */}
+      {exitTrade && (
+        <LogModal
+          strats={strats ?? []}
+          trade={exitTrade}
+          onClose={() => setExitTrade(null)}
+          onUpdate={async (trade) => {
+            await onEditTrade?.(trade)
+            setExitTrade(null)
           }}
         />
       )}
