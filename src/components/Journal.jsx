@@ -363,8 +363,6 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
 
   // ── Live price polling for open + real trades ──────────────
   const fetchLivePrices = useCallback(async () => {
-    if (import.meta.env.DEV) return
-
     const openReal = trades.filter(t => t.outcome === 'open' && !t.mock && t.instrument && t.entryPrice)
     if (!openReal.length) return
 
@@ -572,7 +570,7 @@ export default function Journal({ trades, strats, onDelete, onLogTrade, onEditTr
                 </div>
                 {/* Row 3: prices */}
                 <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-                  {[['Entry', t.entryPrice?.toFixed(2)], ['Exit', t.exitPrice?.toFixed(2) ?? (live ? '—' : '—')], ['R', t.rMult != null ? `${t.rMult > 0 ? '+' : ''}${t.rMult}R` : null]].map(([lbl, val]) =>
+                  {[['Entry', t.entryPrice?.toFixed(2)], ['Exit', t.exitPrice?.toFixed(2) ?? (live ? '—' : '—')], live ? ['LTP', live.ltp?.toFixed(2)] : null, ['R', t.rMult != null ? `${t.rMult > 0 ? '+' : ''}${t.rMult}R` : null]].filter(Boolean).map(([lbl, val]) =>
                     val != null && (
                       <div key={lbl}>
                         <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>{lbl}</div>

@@ -21,7 +21,7 @@ function SummaryCard({ label, value, accent }) {
   return (
     <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '22px 24px', flex: '1 1 min(100%, 180px)', minWidth: 0 }}>
       <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 10 }}>{label}</p>
-      <p style={{ fontSize: 26, fontWeight: 700, color: accent ?? 'var(--text)', margin: 0, fontFamily: 'JetBrains Mono, monospace' }}>{value}</p>
+      <p style={{ fontSize: 26, fontWeight: 700, color: accent ?? 'var(--text)', margin: 0, fontFamily: 'JetBrains Mono, monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</p>
     </div>
   )
 }
@@ -205,16 +205,16 @@ function StrategyPerformance({ trades, strats }) {
   return (
     <div style={{ overflowX: 'auto' }}>
     <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 440 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 60px 60px 80px 80px', gap: 8, padding: '6px 10px', fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 60px 60px minmax(80px,auto) 80px', gap: 8, padding: '6px 10px', fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
         <span>Strategy</span><span style={{ textAlign: 'center' }}>Trades</span><span style={{ textAlign: 'center' }}>Win%</span><span style={{ textAlign: 'center' }}>Avg R</span><span style={{ textAlign: 'right' }}>PnL</span><span/>
       </div>
       {data.map(d => (
-        <div key={d.id} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 60px 60px 80px 80px', gap: 8, padding: '10px 10px', fontSize: 13, borderRadius: 8, background: 'var(--surface-2)', alignItems: 'center' }}>
+        <div key={d.id} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 60px 60px minmax(80px,auto) 80px', gap: 8, padding: '10px 10px', fontSize: 13, borderRadius: 8, background: 'var(--surface-2)', alignItems: 'center' }}>
           <span style={{ fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</span>
           <span style={{ textAlign: 'center', color: 'var(--text-2)', fontFamily: 'JetBrains Mono, monospace' }}>{d.count}</span>
           <span style={{ textAlign: 'center', fontFamily: 'JetBrains Mono, monospace', color: d.wr >= 50 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>{d.wr}%</span>
           <span style={{ textAlign: 'center', fontFamily: 'JetBrains Mono, monospace', color: d.avgR == null ? 'var(--text-3)' : d.avgR > 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>{d.avgR == null ? '—' : `${d.avgR > 0 ? '+' : ''}${d.avgR.toFixed(1)}R`}</span>
-          <span style={{ textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, color: d.pnl > 0 ? 'var(--green)' : d.pnl < 0 ? 'var(--red)' : 'var(--text-2)' }}>{d.pnl >= 0 ? '+' : ''}₹{fmt(d.pnl)}</span>
+          <span style={{ textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, color: d.pnl > 0 ? 'var(--green)' : d.pnl < 0 ? 'var(--red)' : 'var(--text-2)', whiteSpace: 'nowrap' }}>{d.pnl >= 0 ? '+' : ''}₹{fmt(d.pnl)}</span>
           <div style={{ height: 6, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
             <div style={{ height: '100%', width: `${d.wr}%`, background: d.wr >= 50 ? 'var(--green)' : 'var(--red)', borderRadius: 3 }}/>
           </div>

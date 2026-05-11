@@ -270,13 +270,13 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
                     return (
                       <div key={`${p.tradingsymbol}-${i}`} style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10, opacity: dimmed ? 0.4 : 1 }}>
                         {/* Row 1: symbol + P&L */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', fontFamily: 'JetBrains Mono, monospace' }}>{p.tradingsymbol}</span>
-                            <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-3)' }}>{p.exchange}</span>
-                            <span style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 600 }}>{p.product}</span>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
+                            <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', fontFamily: 'JetBrains Mono, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.tradingsymbol}</span>
+                            <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-3)', flexShrink: 0 }}>{p.exchange}</span>
+                            <span style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 600, flexShrink: 0 }}>{p.product}</span>
                           </div>
-                          <PnlText value={p.pnl} />
+                          <span style={{ flexShrink: 0, whiteSpace: 'nowrap' }}><PnlText value={p.pnl} /></span>
                         </div>
                         {/* Stats grid: 2 columns */}
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 16px' }}>
@@ -288,7 +288,7 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
                           ].map(([lbl, val, color]) => (
                             <div key={lbl}>
                               <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>{lbl}</div>
-                              <div style={{ fontSize: 13, fontWeight: 600, color, fontFamily: 'JetBrains Mono, monospace' }}>{val}</div>
+                              <div style={{ fontSize: 13, fontWeight: 600, color, fontFamily: 'JetBrains Mono, monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{val}</div>
                             </div>
                           ))}
                         </div>
@@ -305,8 +305,8 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
                     )
                   })}
                   {positions.length > 1 && (
-                    <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)' }}>Total Day P&L</span>
+                    <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>Total Day P&L</span>
                       <PnlText value={dayPnl} />
                     </div>
                   )}
@@ -415,13 +415,13 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
                     return (
                       <div key={`${h.tradingsymbol}-${i}`} style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                         {/* Row 1: symbol + return */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', fontFamily: 'JetBrains Mono, monospace' }}>{h.tradingsymbol}</span>
-                            <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-3)' }}>{h.exchange}</span>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
+                            <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', fontFamily: 'JetBrains Mono, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.tradingsymbol}</span>
+                            <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-3)', flexShrink: 0 }}>{h.exchange}</span>
                           </div>
                           {returnPct != null && (
-                            <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: returnPct >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                            <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: returnPct >= 0 ? 'var(--green)' : 'var(--red)', flexShrink: 0, whiteSpace: 'nowrap' }}>
                               {returnPct >= 0 ? '+' : ''}{returnPct.toFixed(2)}%
                             </span>
                           )}
@@ -438,7 +438,7 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
                           ].map(([lbl, val, color]) => (
                             <div key={lbl}>
                               <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>{lbl}</div>
-                              <div style={{ fontSize: 13, fontWeight: lbl === 'P&L' ? 700 : 600, color, fontFamily: 'JetBrains Mono, monospace' }}>{val}</div>
+                              <div style={{ fontSize: 13, fontWeight: lbl === 'P&L' ? 700 : 600, color, fontFamily: 'JetBrains Mono, monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{val}</div>
                             </div>
                           ))}
                         </div>
@@ -458,11 +458,11 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
                     )
                   })}
                   {holdings.length > 1 && (
-                    <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)' }}>Total Holdings P&L</span>
-                      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                    <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>Total Holdings P&L</span>
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexShrink: 0 }}>
                         <PnlText value={holdingsPnl} />
-                        {holdingsTotalPct != null && <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: holdingsTotalPct >= 0 ? 'var(--green)' : 'var(--red)' }}>{holdingsTotalPct >= 0 ? '+' : ''}{holdingsTotalPct.toFixed(2)}%</span>}
+                        {holdingsTotalPct != null && <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: holdingsTotalPct >= 0 ? 'var(--green)' : 'var(--red)', whiteSpace: 'nowrap' }}>{holdingsTotalPct >= 0 ? '+' : ''}{holdingsTotalPct.toFixed(2)}%</span>}
                       </div>
                     </div>
                   )}
@@ -595,7 +595,7 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
                             {h.folio && <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>{h.folio}</div>}
                           </div>
                           {returnPct != null && (
-                            <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: returnPct >= 0 ? 'var(--green)' : 'var(--red)', flexShrink: 0 }}>
+                            <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: returnPct >= 0 ? 'var(--green)' : 'var(--red)', flexShrink: 0, whiteSpace: 'nowrap' }}>
                               {returnPct >= 0 ? '+' : ''}{returnPct.toFixed(2)}%
                             </span>
                           )}
@@ -612,7 +612,7 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
                           ].map(([lbl, val, color]) => (
                             <div key={lbl}>
                               <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>{lbl}</div>
-                              <div style={{ fontSize: 13, fontWeight: lbl === 'P&L' ? 700 : 600, color, fontFamily: 'JetBrains Mono, monospace' }}>{val}</div>
+                              <div style={{ fontSize: 13, fontWeight: lbl === 'P&L' ? 700 : 600, color, fontFamily: 'JetBrains Mono, monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{val}</div>
                             </div>
                           ))}
                         </div>
@@ -620,11 +620,11 @@ export default function KitePanel({ connected, portfolio, loading, error, loginU
                     )
                   })}
                   {mfHoldings.length > 1 && (
-                    <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)' }}>Total MF P&L</span>
-                      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                    <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>Total MF P&L</span>
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexShrink: 0 }}>
                         <PnlText value={mfPnl} />
-                        {mfTotalPct != null && <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: mfTotalPct >= 0 ? 'var(--green)' : 'var(--red)' }}>{mfTotalPct >= 0 ? '+' : ''}{mfTotalPct.toFixed(2)}%</span>}
+                        {mfTotalPct != null && <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: mfTotalPct >= 0 ? 'var(--green)' : 'var(--red)', whiteSpace: 'nowrap' }}>{mfTotalPct >= 0 ? '+' : ''}{mfTotalPct.toFixed(2)}%</span>}
                       </div>
                     </div>
                   )}
