@@ -26,15 +26,20 @@ import {
   deleteWatchlistItem,
   getUserPreferencesFull,
   upsertUserPreferences,
+  getUserRole,
+  getUserPermissions,
 } from "./lib/db";
 import { supabase } from "./lib/supabase";
 import Library from "./components/Library";
 import Checklist from "./components/Checklist";
 import Journal from "./components/Journal";
 import StatsView from "./components/StatsView";
+import ComparePanel from "./components/ComparePanel";
 import Calculator from "./components/Calculator";
 import ChecklistLibrary from "./components/ChecklistLibrary";
 import Login from "./components/Login";
+import AdminPanel from "./components/AdminPanel";
+import Unauthorized from "./components/Unauthorized";
 import OptionStrategies from "./components/OptionStrategies";
 import Watchlist from "./components/Watchlist";
 
@@ -137,14 +142,16 @@ function BrokerConnect({ connected, portfolio, loading, error, loginUrl, disconn
 }
 
 const NAV_ITEMS = [
-  { id: "strategies", label: "Strategies", path: "/tradedesk/strategies" },
-  { id: "checklist",  label: "Checklist",  path: "/tradedesk/checklist"  },
-  { id: "journal",    label: "Journal",    path: "/tradedesk/journal"    },
-  { id: "watchlist",  label: "Watchlist",  path: "/tradedesk/watchlist"  },
-  { id: "stats",      label: "Stats",      path: "/tradedesk/stats"      },
-  { id: "calculator", label: "Calculator", path: "/tradedesk/calculator" },
-  { id: "playbook",   label: "Playbook",   path: "/tradedesk/playbook"   },
-  { id: "broker",     label: "Connect Broker", path: "/tradedesk/broker" },
+  { id: "strategies", label: "Strategies",    path: "/tradedesk/strategies" },
+  { id: "checklist",  label: "Checklist",     path: "/tradedesk/checklist"  },
+  { id: "journal",    label: "Journal",       path: "/tradedesk/journal"    },
+  { id: "watchlist",  label: "Watchlist",     path: "/tradedesk/watchlist"  },
+  { id: "stats",      label: "Stats",         path: "/tradedesk/stats"      },
+  { id: "compare",    label: "Compare",       path: "/tradedesk/compare"    },
+  { id: "calculator", label: "Calculator",    path: "/tradedesk/calculator" },
+  { id: "playbook",   label: "Playbook",      path: "/tradedesk/playbook"   },
+  { id: "broker",     label: "Connect Broker",path: "/tradedesk/broker"     },
+  { id: "admin",      label: "Admin Panel",   path: "/tradedesk/admin"      },
 ];
 
 const PAGE_TITLES = {
@@ -153,9 +160,11 @@ const PAGE_TITLES = {
   journal:    "Trading Journal",
   watchlist:  "Watchlist",
   stats:      "Statistics",
+  compare:    "Portfolio vs Market",
   calculator: "Calculator",
   playbook:   "Strategy Playbook",
   broker:     "Connect Broker",
+  admin:      "Admin Panel",
 };
 
 const REQUIRED_COLS = [
@@ -206,6 +215,13 @@ function Icon({ name, size = 18, color = "currentColor", strokeWidth = 2 }) {
           <line x1="18" y1="20" x2="18" y2="10" />
           <line x1="12" y1="20" x2="12" y2="4" />
           <line x1="6" y1="20" x2="6" y2="14" />
+        </svg>
+      );
+    case "compare":
+      return (
+        <svg {...s} viewBox="0 0 24 24" {...p}>
+          <polyline points="3 17 9 11 13 15 21 7" />
+          <polyline points="3 7 9 13 13 9 21 17" />
         </svg>
       );
     case "position":
@@ -316,6 +332,12 @@ function Icon({ name, size = 18, color = "currentColor", strokeWidth = 2 }) {
           <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
         </svg>
       );
+    case "admin":
+      return (
+        <svg {...s} viewBox="0 0 24 24" {...p}>
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+        </svg>
+      );
     case "checklist":
       return (
         <svg {...s} viewBox="0 0 24 24" {...p}>
@@ -351,6 +373,12 @@ function Icon({ name, size = 18, color = "currentColor", strokeWidth = 2 }) {
           <polyline points="15 18 9 12 15 6" />
         </svg>
       );
+    case "chevron-down":
+      return (
+        <svg {...s} viewBox="0 0 24 24" {...p}>
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      );
     default:
       return null;
   }
@@ -376,6 +404,8 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const [session, setSession] = useState(undefined);
+  const [userRole, setUserRole] = useState(null); // 'admin' | 'user' | null
+  const [userPermissions, setUserPermissions] = useState([]); // string[]
   const [strats, setStrats] = useState([]);
   const [trades, setTrades] = useState([]);
   const [watchlistItems, setWatchlistItems] = useState([]);
@@ -397,11 +427,16 @@ export default function App() {
 
   // ── Responsive breakpoint ──────────────────────────────────
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 1024);
+  const [adminMenuOpen, setAdminMenuOpen] = useState(() => location.pathname.startsWith("/tradedesk/admin"));
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 1024);
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+
+  useEffect(() => {
+    if (location.pathname.startsWith("/tradedesk/admin")) setAdminMenuOpen(true);
+  }, [location.pathname]);
 
   const tab = location.pathname.split("/")[2] ?? "strategies";
 
@@ -475,11 +510,13 @@ export default function App() {
     if (loadedUserRef.current === session.user.id) return;
     loadedUserRef.current = session.user.id;
 
-    Promise.all([getStrategies(), getTrades(), getChecklistItems()])
-      .then(([sv, tv, cv]) => {
+    Promise.all([getStrategies(), getTrades(), getChecklistItems(), getUserRole(), getUserPermissions()])
+      .then(([sv, tv, cv, role, perms]) => {
         setStrats(sv);
         setTrades(tv);
         setChecklistItems(cv);
+        setUserRole(role);
+        setUserPermissions(perms);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -487,6 +524,27 @@ export default function App() {
     // Watchlist fetched separately — migration may not exist yet
     getWatchlist().then(setWatchlistItems).catch(() => {});
     getUserPreferencesFull().then(p => setUserPrefs(p ?? {})).catch(() => {});
+  }, [session]);
+
+  useEffect(() => {
+    if (!session) return;
+
+    const refreshRole = async () => {
+      try {
+        const [role, perms] = await Promise.all([getUserRole(), getUserPermissions()]);
+        setUserRole(role);
+        setUserPermissions(perms);
+      } catch {
+        // Keep current role if refresh fails.
+      }
+    };
+
+    const onFocus = () => {
+      refreshRole();
+    };
+
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, [session]);
 
   const withSync =
@@ -706,6 +764,10 @@ export default function App() {
     r.readAsText(file);
   };
 
+  const isAdmin = userRole === "admin";
+  // Admins bypass all permission checks. Others need the explicit permission.
+  const hasPermission = (name) => isAdmin || userPermissions.includes(name);
+
   const sideW = collapsed ? 64 : 240;
 
   // Scroll active bottom-nav item into view on mobile
@@ -754,9 +816,11 @@ export default function App() {
     journal:    "journal",
     watchlist:  "watchlist",
     stats:      "stats",
+    compare:    "compare",
     calculator: "calculator",
     playbook:   "playbook",
     broker:     "broker",
+    admin:      "admin",
   };
 
   return (
@@ -794,20 +858,11 @@ export default function App() {
         >
           {!collapsed && (
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div
-                style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 9,
-                  background: "var(--green)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                }}
-              >
-                <Icon name="logo" size={18} />
-              </div>
+              <img
+                src="/logo.png"
+                alt="TradeDesk"
+                style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, objectFit: "contain" }}
+              />
               <span
                 style={{
                   fontWeight: 700,
@@ -821,19 +876,11 @@ export default function App() {
             </div>
           )}
           {collapsed && (
-            <div
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: 9,
-                background: "var(--green)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Icon name="logo" size={18} />
-            </div>
+            <img
+              src="/logo.png"
+              alt="TradeDesk"
+              style={{ width: 34, height: 34, borderRadius: 9, objectFit: "contain" }}
+            />
           )}
         </div>
 
@@ -873,7 +920,7 @@ export default function App() {
 
         {/* Nav items */}
         <nav style={{ flex: 1, padding: collapsed ? "8px 0" : "4px 8px" }}>
-          {NAV_ITEMS.map(({ id, label, path }) => {
+          {NAV_ITEMS.filter(({ id }) => id !== "admin" && (id !== "broker" || isAdmin) && (id !== "compare" || hasPermission("compare"))).map(({ id, label, path }) => {
             const isActive = location.pathname === path || location.pathname.startsWith(path + '/');
             const iconName = navIconName[id];
             return (
@@ -911,6 +958,87 @@ export default function App() {
               </button>
             );
           })}
+
+          {isAdmin && (
+            <>
+              <button
+                onClick={() => {
+                  if (collapsed) {
+                    navigate("/tradedesk/admin/users");
+                    return;
+                  }
+                  setAdminMenuOpen((v) => !v);
+                }}
+                title={collapsed ? "Admin Panel" : undefined}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: collapsed ? 0 : 10,
+                  justifyContent: collapsed ? "center" : "space-between",
+                  padding: collapsed ? "10px 0" : "9px 12px",
+                  borderRadius: collapsed ? 0 : 8,
+                  border: "none",
+                  cursor: "pointer",
+                  background: location.pathname.startsWith("/tradedesk/admin") ? "var(--green-light)" : "transparent",
+                  color: location.pathname.startsWith("/tradedesk/admin") ? "var(--green)" : "var(--text-2)",
+                  fontWeight: location.pathname.startsWith("/tradedesk/admin") ? 600 : 400,
+                  fontSize: 14,
+                  fontFamily: "Inter, sans-serif",
+                  marginBottom: 2,
+                  transition: "background 0.15s, color 0.15s",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: collapsed ? 0 : 10 }}>
+                  <Icon
+                    name="admin"
+                    size={18}
+                    color={location.pathname.startsWith("/tradedesk/admin") ? "var(--green)" : "var(--text-3)"}
+                  />
+                  {!collapsed && <span style={{ whiteSpace: "nowrap" }}>Admin Panel</span>}
+                </div>
+                {!collapsed && (
+                  <Icon
+                    name={adminMenuOpen ? "chevron-down" : "chevron-left"}
+                    size={14}
+                    color="var(--text-3)"
+                  />
+                )}
+              </button>
+
+              {!collapsed && adminMenuOpen && (
+                <div style={{ paddingLeft: 34, marginTop: 2, marginBottom: 4, display: "flex", flexDirection: "column", gap: 2 }}>
+                  {[
+                    { id: "users", label: "Users", path: "/tradedesk/admin/users" },
+                    { id: "roles", label: "Roles", path: "/tradedesk/admin/roles" },
+                    { id: "permissions", label: "Permissions", path: "/tradedesk/admin/permissions" },
+                  ].map((item) => {
+                    const subActive = location.pathname === item.path || location.pathname.startsWith(item.path + "/");
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => navigate(item.path)}
+                        style={{
+                          border: "none",
+                          background: subActive ? "var(--green-light)" : "transparent",
+                          color: subActive ? "var(--green)" : "var(--text-2)",
+                          textAlign: "left",
+                          cursor: "pointer",
+                          borderRadius: 6,
+                          padding: "7px 10px",
+                          fontSize: 12,
+                          fontWeight: subActive ? 600 : 500,
+                          fontFamily: "Inter, sans-serif",
+                        }}
+                      >
+                        {item.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
         </nav>
 
         {/* Footer */}
@@ -1045,9 +1173,7 @@ export default function App() {
           <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 14, minWidth: 0 }}>
             {/* Logo on mobile */}
             {isMobile && (
-              <div style={{ width: 30, height: 30, borderRadius: 8, background: "var(--green)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <Icon name="logo" size={16} />
-              </div>
+              <img src="/logo.png" alt="TradeDesk" style={{ width: 30, height: 30, borderRadius: 8, objectFit: "contain", flexShrink: 0 }} />
             )}
             {/* Hamburger on desktop */}
             {!isMobile && (
@@ -1177,6 +1303,7 @@ export default function App() {
           paddingBottom: isMobile ? 80 : 28,
         }}>
           <Routes>
+            <Route path="/compare" element={<Navigate to="/tradedesk/compare" replace />} />
             <Route
               path="/tradedesk/strategies"
               element={
@@ -1239,25 +1366,51 @@ export default function App() {
               path="/tradedesk/stats"
               element={<StatsView trades={trades} strats={strats} totalInvestment={userPrefs.totalInvestment} onSaveTotalInvestment={async (val) => { await upsertUserPreferences({ ...userPrefs, totalInvestment: val }); setUserPrefs(p => ({ ...p, totalInvestment: val })) }} />}
             />
+            <Route
+              path="/tradedesk/compare"
+              element={
+                hasPermission("compare")
+                  ? <ComparePanel trades={trades} totalInvestment={userPrefs.totalInvestment} />
+                  : <Navigate to="/tradedesk/strategies" replace />
+              }
+            />
             <Route path="/tradedesk/calculator" element={<Calculator />} />
             <Route path="/tradedesk/playbook" element={<OptionStrategies />} />
+            <Route path="/tradedesk/forbidden" element={<Unauthorized />} />
             <Route
               path="/tradedesk/broker"
               element={
-                <BrokerConnect
-                  connected={kite.connected}
-                  portfolio={kite.portfolio}
-                  loading={kite.loading}
-                  error={kite.error}
-                  loginUrl={kite.loginUrl}
-                  disconnect={kite.disconnect}
-                  refresh={kite.refresh}
-                  strats={strats}
-                  trades={trades}
-                  onLogTrade={handleInsertTrade}
-                  onEditTrade={handleUpdateTrade}
-                />
+                isAdmin ? (
+                  <BrokerConnect
+                    connected={kite.connected}
+                    portfolio={kite.portfolio}
+                    loading={kite.loading}
+                    error={kite.error}
+                    loginUrl={kite.loginUrl}
+                    disconnect={kite.disconnect}
+                    refresh={kite.refresh}
+                    strats={strats}
+                    trades={trades}
+                    onLogTrade={handleInsertTrade}
+                    onEditTrade={handleUpdateTrade}
+                  />
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "80px 24px", textAlign: "center", gap: 12 }}>
+                    <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                    <p style={{ fontWeight: 700, fontSize: 16, color: "var(--text)", margin: 0 }}>Access Restricted</p>
+                    <p style={{ fontSize: 13, color: "var(--text-2)", margin: 0, maxWidth: 320 }}>
+                      Broker connection is available to admins only. Contact your admin to request access.
+                    </p>
+                  </div>
+                )
               }
+            />
+            <Route
+              path="/tradedesk/admin/*"
+              element={isAdmin ? <AdminPanel isAdmin={isAdmin} /> : <Navigate to="/tradedesk/forbidden" replace />}
             />
             <Route
               path="*"
@@ -1281,7 +1434,7 @@ export default function App() {
             overflowX: 'auto',
             scrollbarWidth: 'none',
           }}>
-            {NAV_ITEMS.map(({ id, label, path }) => {
+            {NAV_ITEMS.filter(({ id }) => ((id !== "broker" && id !== "admin") || isAdmin) && (id !== "compare" || hasPermission("compare"))).map(({ id, label, path }) => {
               const isActive = location.pathname === path || location.pathname.startsWith(path + '/');
               return (
                 <button key={id} className="bnav-btn"

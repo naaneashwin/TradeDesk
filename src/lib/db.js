@@ -1,5 +1,227 @@
 import { supabase } from "./supabase";
 
+// ── Roles ────────────────────────────────────────────────────
+
+/**
+ * Returns the role of the current user: 'admin' | 'user'.
+ * Falls back to 'user' if no row exists yet (e.g. before the trigger fires).
+ */
+export async function getUserRole() {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data, error } = await supabase
+    .from("user_roles")
+    .select("role, role_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  // Prefer role_id mapping when present so admin checks still work
+  // even if only the FK was updated.
+  if (data?.role_id) {
+    const { data: roleRow, error: roleError } = await supabase
+      .from("roles")
+      .select("name")
+      .eq("id", data.role_id)
+      .maybeSingle();
+
+    if (!roleError && roleRow?.name) {
+      return String(roleRow.name).trim().toLowerCase();
+    }
+  }
+
+  if (data?.role) return String(data.role).trim().toLowerCase();
+  return "user";
+}
+
+// ── Admin: Users ─────────────────────────────────────────────
+
+export async function adminGetUsers() {
+  const { data, error } = await supabase
+    .rpc("admin_list_users");
+  if (error) throw error;
+  return (data ?? []).sort((a, b) => {
+    const aTs = a?.created_at ? Date.parse(a.created_at) : 0;
+    const bTs = b?.created_at ? Date.parse(b.created_at) : 0;
+    return bTs - aTs;
+  });
+}
+
+export async function adminUpdateUserRole(userId, roleText, roleId) {
+  const { error } = await supabase
+    .from("user_roles")
+    .update({ role: roleText, role_id: roleId, updated_at: new Date().toISOString() })
+    .eq("user_id", userId);
+  if (error) throw error;
+}
+
+export async function adminUpdateUserStatus(userId, status) {
+  const { error } = await supabase
+    .from("user_roles")
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq("user_id", userId);
+  if (error) throw error;
+}
+
+export async function adminUpdateUserDisplayName(userId, displayName) {
+  const { error } = await supabase
+    .from("user_roles")
+    .update({ display_name: displayName, updated_at: new Date().toISOString() })
+    .eq("user_id", userId);
+  if (error) throw error;
+}
+
+export async function adminSoftDeleteUser(userId) {
+  const { error } = await supabase
+    .from("user_roles")
+    .update({ status: "inactive", updated_at: new Date().toISOString() })
+    .eq("user_id", userId);
+  if (error) throw error;
+}
+
+export async function adminInviteUser({ email, role = "user", displayName = "" }) {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error("You must be signed in to invite users.");
+  }
+
+  const res = await fetch("/api/admin/invite-user", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ email, role, displayName }),
+  });
+
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(body?.error || "Failed to invite user.");
+  }
+  return body;
+}
+
+// ── User permissions ─────────────────────────────────────────
+
+/**
+ * Returns the permission names granted to the current user's role.
+ * Returns an empty array if the user has no role or no permissions.
+ */
+export async function getUserPermissions() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const { data: urData } = await supabase
+    .from("user_roles")
+    .select("role_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  const roleId = urData?.role_id;
+  if (!roleId) return [];
+
+  const { data, error } = await supabase
+    .from("role_permissions")
+    .select("permissions(name)")
+    .eq("role_id", roleId);
+
+  if (error) return [];
+  return (data ?? []).map((rp) => rp.permissions?.name).filter(Boolean);
+}
+
+// ── Admin: Roles ─────────────────────────────────────────────
+
+export async function adminGetRoles() {
+  const { data, error } = await supabase
+    .from("roles")
+    .select("*, role_permissions(permission_id, permissions(*))")
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((r) => ({
+    ...r,
+    permissions: (r.role_permissions ?? []).map((rp) => rp.permissions),
+  }));
+}
+
+export async function adminCreateRole({ name, description, color }) {
+  const { data, error } = await supabase
+    .from("roles")
+    .insert({ name, description, color })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function adminUpdateRole(id, { name, description, color }) {
+  const { error } = await supabase
+    .from("roles")
+    .update({ name, description, color })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function adminDeleteRole(id) {
+  const { error } = await supabase.from("roles").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function adminSetRolePermissions(roleId, permissionIds) {
+  // Delete existing then insert new
+  const { error: delError } = await supabase
+    .from("role_permissions")
+    .delete()
+    .eq("role_id", roleId);
+  if (delError) throw delError;
+
+  if (permissionIds.length === 0) return;
+
+  const rows = permissionIds.map((pid) => ({ role_id: roleId, permission_id: pid }));
+  const { error } = await supabase.from("role_permissions").insert(rows);
+  if (error) throw error;
+}
+
+// ── Admin: Permissions ────────────────────────────────────────
+
+export async function adminGetPermissions() {
+  const { data, error } = await supabase
+    .from("permissions")
+    .select("*")
+    .order("module", { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function adminCreatePermission({ name, description, module: mod }) {
+  const { data, error } = await supabase
+    .from("permissions")
+    .insert({ name, description, module: mod })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function adminUpdatePermission(id, { name, description, module: mod }) {
+  const { error } = await supabase
+    .from("permissions")
+    .update({ name, description, module: mod })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function adminDeletePermission(id) {
+  const { error } = await supabase.from("permissions").delete().eq("id", id);
+  if (error) throw error;
+}
+
 // ── Strategies ──────────────────────────────────────────────
 
 export async function getStrategies() {

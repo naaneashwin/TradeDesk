@@ -202,3 +202,120 @@ input[type=number]:focus { outline: none; }
   background: var(--border-2);
   margin: 0 auto 16px;
 }
+
+/* ── Admin Panel layout ── */
+.admin-layout {
+  display: flex;
+  gap: 0;
+  min-height: 100%;
+}
+
+.admin-sidebar {
+  width: 180px;
+  flex-shrink: 0;
+  margin-right: 28px;
+}
+
+.admin-sidebar-nav {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.admin-sidebar-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 14px;
+  border: none;
+  cursor: pointer;
+  font-weight: 400;
+  font-size: 13px;
+  font-family: Inter, sans-serif;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s, color 0.15s;
+  text-align: left;
+}
+.admin-sidebar-btn:last-child { border-bottom: none; }
+
+/* User cards (shown on mobile, hidden on desktop) */
+.admin-user-cards { display: none; }
+.admin-user-table { display: block; }
+
+@media (max-width: 1023px) {
+  .admin-layout {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .admin-sidebar {
+    width: 100%;
+    margin-right: 0;
+  }
+
+  .admin-sidebar-nav {
+    display: flex;
+    flex-direction: row;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .admin-sidebar-btn {
+    flex: 1;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 6px;
+    font-size: 11px;
+    justify-content: center;
+    text-align: center;
+    border-bottom: none;
+    border-right: 1px solid var(--border);
+  }
+  .admin-sidebar-btn:last-child { border-right: none; }
+
+  .admin-user-cards { display: flex; flex-direction: column; gap: 10px; }
+  .admin-user-table { display: none; }
+}
+
+/* Admin user card */
+.admin-user-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+}
+.admin-user-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.admin-user-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+}
+.admin-user-card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.admin-user-card-label {
+  font-size: 11px;
+  color: var(--text-3);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.admin-user-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
